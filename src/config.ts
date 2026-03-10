@@ -77,10 +77,12 @@ function normalizeConfig(value: unknown, sourcePath: string): PartialConfig {
   return normalized;
 }
 
+type StringConfigKey = "apiKey" | "model" | "baseUrl" | "systemPrompt" | "defaultBaseBranch";
+
 function copyString(
   source: Record<string, unknown>,
   target: PartialConfig,
-  key: keyof AppConfig,
+  key: StringConfigKey,
 ): void {
   const value = source[key];
 

@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { UserError } from "./errors.ts";
 import { emitSuccess } from "./output.ts";
-import type { CommandDependencies } from "./types.ts";
+import type { OutputWriter, PromptHandler } from "./types.ts";
 
 type IgnoreSection = {
   title: string;
@@ -12,42 +12,26 @@ type IgnoreSection = {
 
 export async function runGitignoreFlow(options: {
   cwd: string;
-  output: CommandDependencies["output"];
-  prompt: NonNullable<CommandDependencies["prompt"]>;
+  output: OutputWriter;
+  prompt: PromptHandler;
   autoConfirm: boolean;
 }): Promise<void> {
   const projectRoot = options.cwd;
   const sections = detectIgnoreSections(projectRoot);
   const result = buildGitignoreUpdate(projectRoot, sections);
 
-  if (options.output?.headline) {
-    options.output.headline("AutoGit Gitignore");
-  } else {
-    options.output?.info("AutoGit Gitignore");
-  }
-
-  if (options.output?.keyValue) {
-    options.output.keyValue("Project", path.basename(projectRoot));
-    options.output.keyValue("Sections", String(sections.length));
-  } else {
-    options.output?.info(`Project: ${path.basename(projectRoot)}`);
-    options.output?.info(`Sections: ${sections.length}`);
-  }
-  options.output?.info("");
+  options.output.headline("AutoGit Gitignore");
+  options.output.keyValue("Project", path.basename(projectRoot));
+  options.output.keyValue("Sections", String(sections.length));
+  options.output.info("");
 
   if (result.addedEntries.length === 0) {
     emitSuccess(options.output, ".gitignore is already up to date.");
     return;
   }
 
-  if (options.output?.box) {
-    options.output.box("Proposed .gitignore additions", result.preview);
-  } else {
-    options.output?.info("Proposed .gitignore additions:");
-    options.output?.info("");
-    options.output?.info(result.preview);
-  }
-  options.output?.info("");
+  options.output.box("Proposed .gitignore additions", result.preview);
+  options.output.info("");
 
   if (!options.autoConfirm) {
     const confirmed = await options.prompt.confirm("Write these entries to .gitignore?");

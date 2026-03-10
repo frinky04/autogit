@@ -1,5 +1,6 @@
 import { UserError } from "./errors.ts";
-import type { AppConfig, OpenRouterRequest } from "./types.ts";
+import type { AppConfig, CommitMessageGenerator, OpenRouterRequest, OutputWriter } from "./types.ts";
+import { emitWarn } from "./output.ts";
 
 export async function generateCommitMessage(
   config: AppConfig,
@@ -258,4 +259,41 @@ function buildReasoningBody(mode: OpenRouterRequest["reasoningMode"]):
   }
 
   return undefined;
+}
+
+export async function generateCommitMessageWithFallback(
+  config: AppConfig & { apiKey: string },
+  request: OpenRouterRequest,
+  fetchImpl: typeof fetch,
+  generator: CommitMessageGenerator,
+  output: OutputWriter,
+  options?: { onToken?: (token: string) => void },
+): Promise<string> {
+  try {
+    return await generator(config, request, fetchImpl, options);
+  } catch (error) {
+    if (!(error instanceof UserError)) {
+      throw error;
+    }
+
+    if (request.reasoningMode !== "off" || !isMandatoryReasoningError(error.message)) {
+      throw error;
+    }
+
+    emitWarn(
+      output,
+      "Reasoning cannot be disabled for this model/provider. Retrying with provider-default reasoning.",
+    );
+
+    return generator(
+      config,
+      { ...request, reasoningMode: "auto" },
+      fetchImpl,
+      options,
+    );
+  }
+}
+
+function isMandatoryReasoningError(message: string): boolean {
+  return /reasoning is mandatory.*cannot be disabled/i.test(message);
 }

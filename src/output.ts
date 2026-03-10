@@ -177,20 +177,30 @@ export function createConsolePrompt(): PromptHandler {
   };
 }
 
-export function emitSuccess(output: OutputWriter | undefined, message: string): void {
-  if (output?.success) {
-    output.success(message);
-  } else {
-    output?.info(message);
-  }
+export function createNoopOutput(): OutputWriter {
+  const noop = () => {};
+  return {
+    info: noop,
+    error: noop,
+    stream: noop,
+    endStream: noop,
+    startSpinner: noop,
+    stopSpinner: noop,
+    headline: noop,
+    keyValue: noop,
+    box: noop,
+    actionLine: noop,
+    success: noop,
+    warn: noop,
+  };
 }
 
-export function emitWarn(output: OutputWriter | undefined, message: string): void {
-  if (output?.warn) {
-    output.warn(message);
-  } else {
-    output?.info(message);
-  }
+export function emitSuccess(output: OutputWriter, message: string): void {
+  output.success(message);
+}
+
+export function emitWarn(output: OutputWriter, message: string): void {
+  output.warn(message);
 }
 
 async function askLine(prompt: string): Promise<string> {

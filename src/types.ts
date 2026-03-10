@@ -1,16 +1,16 @@
 export type OutputWriter = {
   info(message: string): void;
   error(message: string): void;
-  stream?(chunk: string): void;
-  endStream?(): void;
-  startSpinner?(message: string): void;
-  stopSpinner?(): void;
-  headline?(message: string): void;
-  keyValue?(label: string, value: string): void;
-  box?(title: string, content: string): void;
-  actionLine?(items: Array<{ key: string; label: string }>): void;
-  success?(message: string): void;
-  warn?(message: string): void;
+  stream(chunk: string): void;
+  endStream(): void;
+  startSpinner(message: string): void;
+  stopSpinner(): void;
+  headline(message: string): void;
+  keyValue(label: string, value: string): void;
+  box(title: string, content: string): void;
+  actionLine(items: Array<{ key: string; label: string }>): void;
+  success(message: string): void;
+  warn(message: string): void;
 };
 
 export type CommitAction = "commit" | "push" | "branch" | "edit" | "regenerate" | "cancel";
@@ -30,6 +30,16 @@ export type CommandDependencies = {
   fetchImpl?: typeof fetch;
   gitClient?: GitClient;
   generateCommitMessage?: CommitMessageGenerator;
+};
+
+export type CliContext = {
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+  output: OutputWriter;
+  prompt: PromptHandler;
+  fetchImpl: typeof fetch;
+  git: GitClient;
+  generateCommitMessage: CommitMessageGenerator;
 };
 
 export type ParsedCommand = {
