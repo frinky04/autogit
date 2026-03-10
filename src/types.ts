@@ -5,10 +5,20 @@ export type OutputWriter = {
   endStream?(): void;
   startSpinner?(message: string): void;
   stopSpinner?(): void;
+  headline?(message: string): void;
+  keyValue?(label: string, value: string): void;
+  box?(title: string, content: string): void;
+  actionLine?(items: Array<{ key: string; label: string }>): void;
+  success?(message: string): void;
+  warn?(message: string): void;
 };
+
+export type CommitAction = "commit" | "push" | "edit" | "regenerate" | "cancel";
 
 export type PromptHandler = {
   confirm(message: string): Promise<boolean>;
+  chooseCommitAction?(message: string): Promise<CommitAction>;
+  editMessage?(message: string): Promise<string | null>;
 };
 
 export type CommandDependencies = {
@@ -50,6 +60,7 @@ export type GitClient = {
   ensureGitAvailable(cwd: string): void;
   resolveRepoRoot(cwd: string): string;
   getCurrentBranch(cwd: string): string;
+  getStagedFiles(cwd: string): string[];
   getStagedDiff(cwd: string): string;
   hasWorkingTreeChanges(cwd: string): boolean;
   stageAllChanges(cwd: string): void;

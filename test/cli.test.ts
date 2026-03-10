@@ -45,6 +45,12 @@ test("runCli commit creates a commit from staged changes", async () => {
       async confirm() {
         return true;
       },
+      async chooseCommitAction() {
+        return "commit";
+      },
+      async editMessage(message) {
+        return message;
+      },
     },
     gitClient: {
       ensureGitAvailable() {},
@@ -53,6 +59,9 @@ test("runCli commit creates a commit from staged changes", async () => {
       },
       getCurrentBranch() {
         return "main";
+      },
+      getStagedFiles() {
+        return ["file.txt"];
       },
       getStagedDiff() {
         return "diff --git a/file.txt b/file.txt";
@@ -86,8 +95,10 @@ test("runCli commit creates a commit from staged changes", async () => {
   assert.equal(streamEnded, 1);
   assert.equal(spinnerStarted, 1);
   assert.equal(spinnerStopped, 2);
-  assert.ok(messages.some((message) => message.includes("Draft commit message:")));
-  assert.ok(messages.some((message) => message.includes("Commit created.")));
+  assert.ok(messages.includes("AutoGit"));
+  assert.ok(messages.some((message) => message.includes("Branch: main")));
+  assert.ok(messages.some((message) => message.includes("Suggested commit message:")));
+  assert.ok(messages.some((message) => message.includes("Committed changes.")));
 });
 
 test("runCli retries with auto reasoning when provider rejects no-reasoning", async () => {
@@ -113,6 +124,12 @@ test("runCli retries with auto reasoning when provider rejects no-reasoning", as
       async confirm() {
         return true;
       },
+      async chooseCommitAction() {
+        return "commit";
+      },
+      async editMessage(message) {
+        return message;
+      },
     },
     gitClient: {
       ensureGitAvailable() {},
@@ -121,6 +138,9 @@ test("runCli retries with auto reasoning when provider rejects no-reasoning", as
       },
       getCurrentBranch() {
         return "main";
+      },
+      getStagedFiles() {
+        return ["file.txt"];
       },
       getStagedDiff() {
         return "diff --git a/file.txt b/file.txt";
@@ -168,7 +188,7 @@ test("runCli commit prompts to stage all when nothing is staged", async () => {
   const messages: string[] = [];
   const commits: string[] = [];
   let staged = false;
-  let confirmCalls = 0;
+  const actionCalls: string[] = [];
 
   const exitCode = await runCli(["commit"], {
     cwd: "/repo",
@@ -186,12 +206,18 @@ test("runCli commit prompts to stage all when nothing is staged", async () => {
     },
     prompt: {
       async confirm(message: string) {
-        confirmCalls += 1;
         if (message.includes("Stage all")) {
           return true;
         }
 
         return true;
+      },
+      async chooseCommitAction() {
+        actionCalls.push("commit");
+        return "commit";
+      },
+      async editMessage(message) {
+        return message;
       },
     },
     gitClient: {
@@ -201,6 +227,9 @@ test("runCli commit prompts to stage all when nothing is staged", async () => {
       },
       getCurrentBranch() {
         return "main";
+      },
+      getStagedFiles() {
+        return ["file.txt"];
       },
       getStagedDiff() {
         return staged ? "diff --git a/file.txt b/file.txt" : "";
@@ -230,7 +259,7 @@ test("runCli commit prompts to stage all when nothing is staged", async () => {
 
   assert.equal(exitCode, 0);
   assert.deepEqual(commits, ["feat: stage and commit changes"]);
-  assert.equal(confirmCalls, 2);
+  assert.deepEqual(actionCalls, ["commit"]);
   assert.ok(messages.some((message) => message.includes("Staging all changes.")));
 });
 
@@ -263,6 +292,9 @@ test("runCli commit --all stages without prompting first", async () => {
       getCurrentBranch() {
         return "main";
       },
+      getStagedFiles() {
+        return ["file.txt"];
+      },
       getStagedDiff() {
         return staged ? "diff --git a/file.txt b/file.txt" : "";
       },
@@ -294,6 +326,146 @@ test("runCli commit --all stages without prompting first", async () => {
   assert.equal(confirmCalls, 0);
 });
 
+test("runCli commit can commit and push from the action prompt", async () => {
+  const messages: string[] = [];
+  const commits: string[] = [];
+  const pushes: string[] = [];
+
+  const exitCode = await runCli(["commit"], {
+    cwd: "/repo",
+    env: {
+      ...process.env,
+      OPENROUTER_API_KEY: "test-key",
+    },
+    output: {
+      info(message: string) {
+        messages.push(message);
+      },
+      error(message: string) {
+        messages.push(message);
+      },
+    },
+    prompt: {
+      async confirm() {
+        return true;
+      },
+      async chooseCommitAction() {
+        return "push";
+      },
+      async editMessage(message) {
+        return message;
+      },
+    },
+    gitClient: {
+      ensureGitAvailable() {},
+      resolveRepoRoot() {
+        return "/repo";
+      },
+      getCurrentBranch() {
+        return "main";
+      },
+      getStagedFiles() {
+        return ["file.txt"];
+      },
+      getStagedDiff() {
+        return "diff --git a/file.txt b/file.txt";
+      },
+      hasWorkingTreeChanges() {
+        return true;
+      },
+      stageAllChanges() {},
+      commitWithMessage(_, message) {
+        commits.push(message);
+      },
+      switchToNewBranch() {},
+      pushCurrentBranch() {
+        pushes.push("main");
+        return "main";
+      },
+      createPullRequest() {},
+      publishRepository() {
+        return "repo";
+      },
+    },
+    async generateCommitMessage() {
+      return "feat: commit and push";
+    },
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(commits, ["feat: commit and push"]);
+  assert.deepEqual(pushes, ["main"]);
+  assert.ok(messages.some((message) => message.includes("Committed and pushed branch: main")));
+});
+
+test("runCli commit can regenerate and edit before committing", async () => {
+  const commits: string[] = [];
+  const generated: string[] = [];
+  const actions: Array<"regenerate" | "edit" | "commit"> = ["regenerate", "edit", "commit"];
+
+  const exitCode = await runCli(["commit"], {
+    cwd: "/repo",
+    env: {
+      ...process.env,
+      OPENROUTER_API_KEY: "test-key",
+    },
+    output: {
+      info() {},
+      error() {},
+    },
+    prompt: {
+      async confirm() {
+        return true;
+      },
+      async chooseCommitAction() {
+        return actions.shift() ?? "commit";
+      },
+      async editMessage() {
+        return "feat: edited message";
+      },
+    },
+    gitClient: {
+      ensureGitAvailable() {},
+      resolveRepoRoot() {
+        return "/repo";
+      },
+      getCurrentBranch() {
+        return "main";
+      },
+      getStagedFiles() {
+        return ["file.txt"];
+      },
+      getStagedDiff() {
+        return "diff --git a/file.txt b/file.txt";
+      },
+      hasWorkingTreeChanges() {
+        return true;
+      },
+      stageAllChanges() {},
+      commitWithMessage(_, message) {
+        commits.push(message);
+      },
+      switchToNewBranch() {},
+      pushCurrentBranch() {
+        return "main";
+      },
+      createPullRequest() {},
+      publishRepository() {
+        return "repo";
+      },
+    },
+    async generateCommitMessage() {
+      const value = generated.length === 0 ? "feat: first draft" : "feat: second draft";
+      generated.push(value);
+      return value;
+    },
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(generated, ["feat: first draft", "feat: second draft"]);
+  assert.deepEqual(commits, ["feat: edited message"]);
+});
+
 test("runCli push sets upstream when missing", async () => {
   const output: string[] = [];
   const exitCode = await runCli(["push"], {
@@ -317,6 +489,9 @@ test("runCli push sets upstream when missing", async () => {
       },
       getCurrentBranch() {
         return "main";
+      },
+      getStagedFiles() {
+        return [];
       },
       getStagedDiff() {
         return "";
@@ -390,6 +565,9 @@ test("runCli publish creates a private GitHub repo by default", async () => {
       },
       getCurrentBranch() {
         return "main";
+      },
+      getStagedFiles() {
+        return [];
       },
       getStagedDiff() {
         return "";

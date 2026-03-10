@@ -5,7 +5,7 @@ import { gitClient as defaultGitClient } from "./git.ts";
 import { runGitignoreFlow } from "./gitignore.ts";
 import { generateCommitMessage } from "./openrouter.ts";
 import { createConsoleOutput, createConsolePrompt } from "./output.ts";
-import type { AppConfig, CommandDependencies, OpenRouterRequest, ReasoningMode } from "./types.ts";
+import type { AppConfig, CommandDependencies, CommitAction, OpenRouterRequest, ReasoningMode } from "./types.ts";
 
 export async function runCli(
   argv: string[],
@@ -64,7 +64,7 @@ export async function runCli(
         }
 
         gitClient.switchToNewBranch(cwd, branchName);
-        output.info(`Switched to new branch: ${branchName}`);
+        output.success?.(`Switched to new branch: ${branchName}`) ?? output.info(`Switched to new branch: ${branchName}`);
 
         const model = getStringFlag(parsed.flags.model, config.model);
         await runCommitFlow({
@@ -84,7 +84,7 @@ export async function runCli(
       }
       case "push": {
         const branchName = gitClient.pushCurrentBranch(cwd);
-        output.info(`Pushed branch: ${branchName}`);
+        output.success?.(`Pushed branch: ${branchName}`) ?? output.info(`Pushed branch: ${branchName}`);
         return 0;
       }
       case "pr": {
@@ -92,7 +92,7 @@ export async function runCli(
         const title = getOptionalStringFlag(parsed.flags.title);
         const body = getOptionalStringFlag(parsed.flags.body);
         gitClient.createPullRequest(cwd, { base, title, body });
-        output.info("Pull request created via gh.");
+        output.success?.("Pull request created via gh.") ?? output.info("Pull request created via gh.");
         return 0;
       }
       case "publish": {
@@ -117,7 +117,8 @@ export async function runCli(
           name: repoName,
           visibility,
         });
-        output.info(`Published GitHub repository: ${publishedName}`);
+        output.success?.(`Published GitHub repository: ${publishedName}`) ??
+          output.info(`Published GitHub repository: ${publishedName}`);
         return 0;
       }
       default:
@@ -180,57 +181,90 @@ async function runCommitFlow(options: {
   }
 
   const repoRoot = options.gitClient.resolveRepoRoot(options.cwd);
+  const branchName = options.gitClient.getCurrentBranch(options.cwd);
+  const stagedFiles = options.gitClient.getStagedFiles(options.cwd);
   const config = requireApiKey(options.config);
-  options.output?.info(`Using model: ${options.model}`);
-  options.output?.startSpinner?.("Generating commit message");
-
-  const request: OpenRouterRequest = {
+  renderCommitHeader(options.output, {
+    branchName,
+    stagedFiles,
     model: options.model,
-    systemPrompt: config.systemPrompt,
-    diff,
-    repoRoot,
-    reasoningMode: options.reasoningMode,
-  };
+  });
 
-  let streamedAny = false;
-  const message = await generateCommitMessageWithFallback(
-    config,
-    request,
-    options.fetchImpl,
-    options.commitMessageGenerator,
-    options.output,
-    {
-      onToken(token) {
-        if (!streamedAny) {
-          options.output?.stopSpinner?.();
-          options.output?.info("Draft commit message:");
-        }
-        streamedAny = true;
-        options.output?.stream?.(token);
+  let message = "";
+
+  while (true) {
+    options.output?.startSpinner?.("Generating commit message");
+
+    const request: OpenRouterRequest = {
+      model: options.model,
+      systemPrompt: config.systemPrompt,
+      diff,
+      repoRoot,
+      reasoningMode: options.reasoningMode,
+    };
+
+    let streamedAny = false;
+    message = await generateCommitMessageWithFallback(
+      config,
+      request,
+      options.fetchImpl,
+      options.commitMessageGenerator,
+      options.output,
+      {
+        onToken(token) {
+          if (!streamedAny) {
+            options.output?.stopSpinner?.();
+            options.output?.info("");
+            options.output?.headline?.("Suggested commit message") ??
+              options.output?.info("Suggested commit message:");
+            options.output?.info("");
+          }
+          streamedAny = true;
+          options.output?.stream?.(token);
+        },
       },
-    },
-  );
+    );
 
-  options.output?.stopSpinner?.();
+    options.output?.stopSpinner?.();
 
-  if (streamedAny) {
-    options.output?.endStream?.();
-  }
-
-  options.output?.info("Final commit message:");
-  options.output?.info("");
-  options.output?.info(message);
-  options.output?.info("");
-
-  if (!options.autoConfirm) {
-    const confirmed = await options.prompt.confirm("Create commit with this message?");
-    if (!confirmed) {
-      throw new UserError("Commit aborted.");
+    if (streamedAny) {
+      options.output?.endStream?.();
+      options.output?.info("");
+    } else {
+      renderCommitMessage(options.output, message);
     }
-  }
 
-  options.gitClient.commitWithMessage(options.cwd, message);
-  options.output?.info("Commit created.");
+    if (options.autoConfirm) {
+      options.gitClient.commitWithMessage(options.cwd, message);
+      options.output?.info("Committed changes.");
+      return;
+    }
+
+    renderCommitActions(options.output);
+    const action = await chooseCommitAction(options.prompt);
+
+    if (action === "regenerate") {
+      continue;
+    }
+
+    if (action === "edit") {
+      const edited = await editCommitMessage(options.prompt, message);
+      if (!edited) {
+        throw new UserError("Commit aborted.");
+      }
+
+      message = edited;
+      renderCommitMessage(options.output, message);
+
+      renderCommitActions(options.output);
+      const followUpAction = await chooseCommitAction(options.prompt);
+      await applyCommitAction(followUpAction, options, message);
+      return;
+    }
+
+    await applyCommitAction(action, options, message);
+    return;
+  }
 }
 
 function getStringFlag(value: string | boolean | undefined, fallback: string): string {
@@ -268,6 +302,91 @@ function resolvePublishVisibility(flags: Record<string, string | boolean>): "pub
   return "private";
 }
 
+function renderCommitHeader(
+  output: CommandDependencies["output"],
+  context: {
+    branchName: string;
+    stagedFiles: string[];
+    model: string;
+  },
+): void {
+  output?.headline?.("AutoGit") ?? output?.info("AutoGit");
+  output?.keyValue?.("Branch", context.branchName) ?? output?.info(`Branch: ${context.branchName}`);
+  output?.keyValue?.(
+    "Staged",
+    `${context.stagedFiles.length} file${context.stagedFiles.length === 1 ? "" : "s"}`,
+  ) ?? output?.info(
+    `Staged: ${context.stagedFiles.length} file${context.stagedFiles.length === 1 ? "" : "s"}`,
+  );
+  output?.keyValue?.("Model", context.model) ?? output?.info(`Model: ${context.model}`);
+  output?.info("");
+}
+
+function renderCommitMessage(output: CommandDependencies["output"], message: string): void {
+  output?.box?.("Suggested commit message", message) ??
+    (output?.info("Suggested commit message:"), output?.info(""), output?.info(message), output?.info(""));
+  output?.info("");
+}
+
+async function chooseCommitAction(prompt: NonNullable<CommandDependencies["prompt"]>): Promise<CommitAction> {
+  if (prompt.chooseCommitAction) {
+    return prompt.chooseCommitAction("[Enter] commit  [p] commit & push  [e] edit  [r] regenerate  [c] cancel");
+  }
+
+  const confirmed = await prompt.confirm("Create commit with this message?");
+  return confirmed ? "commit" : "cancel";
+}
+
+function renderCommitActions(output: CommandDependencies["output"]): void {
+  output?.actionLine?.([
+    { key: "Enter", label: "Commit" },
+    { key: "p", label: "Commit & Push" },
+    { key: "e", label: "Edit" },
+    { key: "r", label: "Regenerate" },
+    { key: "c", label: "Cancel" },
+  ]) ?? output?.info("[Enter] commit  [p] commit & push  [e] edit  [r] regenerate  [c] cancel");
+}
+
+async function editCommitMessage(
+  prompt: NonNullable<CommandDependencies["prompt"]>,
+  message: string,
+): Promise<string | null> {
+  if (!prompt.editMessage) {
+    return message;
+  }
+
+  return prompt.editMessage(message);
+}
+
+async function applyCommitAction(
+  action: CommitAction,
+  options: {
+    cwd: string;
+    output: CommandDependencies["output"];
+    gitClient: NonNullable<CommandDependencies["gitClient"]>;
+  },
+  message: string,
+): Promise<void> {
+  switch (action) {
+    case "commit":
+      options.gitClient.commitWithMessage(options.cwd, message);
+      options.output?.success?.("Committed changes.") ?? options.output?.info("Committed changes.");
+      return;
+    case "push": {
+      options.gitClient.commitWithMessage(options.cwd, message);
+      const branchName = options.gitClient.pushCurrentBranch(options.cwd);
+      options.output?.success?.(`Committed and pushed branch: ${branchName}`) ??
+        options.output?.info(`Committed and pushed branch: ${branchName}`);
+      return;
+    }
+    case "cancel":
+      throw new UserError("Commit aborted.");
+    case "edit":
+    case "regenerate":
+      throw new UserError(`Unsupported commit action: ${action}`);
+  }
+}
+
 async function generateCommitMessageWithFallback(
   config: AppConfig & { apiKey: string },
   request: OpenRouterRequest,
@@ -289,7 +408,9 @@ async function generateCommitMessageWithFallback(
       throw error;
     }
 
-    output?.info(
+    output?.warn?.(
+      "Reasoning cannot be disabled for this model/provider. Retrying with provider-default reasoning.",
+    ) ?? output?.info(
       "Reasoning cannot be disabled for this model/provider. Retrying with provider-default reasoning.",
     );
 

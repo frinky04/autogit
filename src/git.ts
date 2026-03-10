@@ -17,6 +17,13 @@ export function getCurrentBranch(cwd: string): string {
   return runCommand("git", ["rev-parse", "--abbrev-ref", "HEAD"], cwd).stdout.trim();
 }
 
+export function getStagedFiles(cwd: string): string[] {
+  return runCommand("git", ["diff", "--cached", "--name-only"], cwd)
+    .stdout.split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 export function getStagedDiff(cwd: string): string {
   return runCommand(
     "git",
@@ -103,6 +110,7 @@ export const gitClient: GitClient = {
   ensureGitAvailable,
   resolveRepoRoot,
   getCurrentBranch,
+  getStagedFiles,
   getStagedDiff,
   hasWorkingTreeChanges,
   stageAllChanges,
