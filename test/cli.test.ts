@@ -615,13 +615,15 @@ test("runCli guide can commit, push, and create PR", async () => {
         return "/repo";
       },
       getCurrentBranch() {
-        return "main";
+        return "feature/guide-flow";
       },
       getStagedFiles() {
         return ["file.txt"];
       },
       getStatusSummary() {
         return makeStatusSummary({
+          branchName: "feature/guide-flow",
+          upstream: "origin/feature/guide-flow",
           unstagedCount: 1,
           clean: false,
         });
@@ -638,8 +640,8 @@ test("runCli guide can commit, push, and create PR", async () => {
       },
       switchToNewBranch() {},
       pushCurrentBranch() {
-        pushes.push("main");
-        return "main";
+        pushes.push("feature/guide-flow");
+        return "feature/guide-flow";
       },
       createPullRequest(_, options) {
         prs.push(options);
@@ -655,10 +657,86 @@ test("runCli guide can commit, push, and create PR", async () => {
 
   assert.equal(exitCode, 0);
   assert.deepEqual(commits, ["feat: guided commit"]);
-  assert.deepEqual(pushes, ["main"]);
+  assert.deepEqual(pushes, ["feature/guide-flow"]);
   assert.deepEqual(prs, [{ base: undefined }]);
   assert.ok(messages.some((message) => message.includes("AutoGit Status")));
   assert.ok(messages.some((message) => message.includes("Pull request created via gh.")));
+});
+
+test("runCli guide skips PR prompt on main branch", async () => {
+  const prompts: string[] = [];
+  const prs: Array<{ base?: string }> = [];
+
+  const exitCode = await runCli(["guide"], {
+    cwd: "/repo",
+    env: {
+      ...process.env,
+      OPENROUTER_API_KEY: "test-key",
+    },
+    output: {
+      info() {},
+      error() {},
+    },
+    prompt: {
+      async confirm(message: string) {
+        prompts.push(message);
+        return false;
+      },
+      async chooseCommitAction() {
+        return "push";
+      },
+      async editMessage(message) {
+        return message;
+      },
+      async input() {
+        return "";
+      },
+    },
+    gitClient: {
+      ensureGitAvailable() {},
+      resolveRepoRoot() {
+        return "/repo";
+      },
+      getCurrentBranch() {
+        return "main";
+      },
+      getStagedFiles() {
+        return ["file.txt"];
+      },
+      getStatusSummary() {
+        return makeStatusSummary({
+          branchName: "main",
+          upstream: "origin/main",
+          clean: false,
+        });
+      },
+      getStagedDiff() {
+        return "diff --git a/file.txt b/file.txt";
+      },
+      hasWorkingTreeChanges() {
+        return true;
+      },
+      stageAllChanges() {},
+      commitWithMessage() {},
+      switchToNewBranch() {},
+      pushCurrentBranch() {
+        return "main";
+      },
+      createPullRequest(_, options) {
+        prs.push(options);
+      },
+      publishRepository() {
+        return "repo";
+      },
+    },
+    async generateCommitMessage() {
+      return "feat: guided commit";
+    },
+  });
+
+  assert.equal(exitCode, 0);
+  assert.ok(!prompts.includes("Create a pull request now?"));
+  assert.deepEqual(prs, []);
 });
 
 test("runCli push sets upstream when missing", async () => {

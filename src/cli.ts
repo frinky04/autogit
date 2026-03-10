@@ -365,6 +365,7 @@ async function runGuideFlow(options: {
   });
 
   let pushed = result.pushed;
+  const currentBranch = options.gitClient.getCurrentBranch(options.cwd);
   if (!pushed && (await options.prompt.confirm("Push the current branch now?"))) {
     const branchName = options.gitClient.pushCurrentBranch(options.cwd);
     pushed = true;
@@ -375,9 +376,13 @@ async function runGuideFlow(options: {
     }
   }
 
-  if (pushed && (await options.prompt.confirm("Create a pull request now?"))) {
+  if (
+    pushed &&
+    shouldOfferPullRequest(currentBranch, options.config.defaultBaseBranch) &&
+    (await options.prompt.confirm("Create a pull request now?"))
+  ) {
     renderCommandHeader(options.output, "AutoGit PR", [
-      { label: "Branch", value: options.gitClient.getCurrentBranch(options.cwd) },
+      { label: "Branch", value: currentBranch },
       { label: "Base", value: options.config.defaultBaseBranch ?? "(gh default)" },
       { label: "Title", value: "(gh prompt)" },
     ]);
@@ -425,6 +430,18 @@ function resolvePublishVisibility(flags: Record<string, string | boolean>): "pub
   }
 
   return "private";
+}
+
+function shouldOfferPullRequest(currentBranch: string, baseBranch?: string): boolean {
+  if (baseBranch && currentBranch === baseBranch) {
+    return false;
+  }
+
+  if (!baseBranch && (currentBranch === "main" || currentBranch === "master")) {
+    return false;
+  }
+
+  return true;
 }
 
 function renderCommitHeader(
