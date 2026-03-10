@@ -1,7 +1,7 @@
 import { UserError } from "./errors.ts";
 import type { ParsedCommand } from "./types.ts";
 
-const COMMANDS = new Set(["commit", "push", "pr", "branch-commit", "gitignore", "publish", "status", "guide", "help"]);
+const COMMANDS = new Set(["commit", "push", "pr", "gitignore", "publish", "status", "help"]);
 
 export function parseArgs(argv: string[]): ParsedCommand {
   const [maybeCommand, ...rest] = argv;
@@ -65,11 +65,14 @@ Usage:
   autogit commit [--model <id>] [--yes] [--all] [--reasoning] [--no-reasoning]
   autogit push
   autogit pr [--base <branch>] [--title <title>] [--body <body>]
-  autogit branch-commit <branch> [--model <id>] [--yes] [--all] [--reasoning] [--no-reasoning]
   autogit gitignore [--yes]
   autogit publish [<name>] [--public|--private] [--yes]
   autogit status
-  autogit guide
+
+The commit command is the main interactive flow. After generating an
+AI commit message, you can commit, push, switch branch, edit, or
+regenerate. If you push from a feature branch, you will be offered
+to create a pull request.
 
 Config:
   OPENROUTER_API_KEY            Required unless apiKey is set in config

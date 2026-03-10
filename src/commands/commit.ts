@@ -14,7 +14,7 @@ export async function runCommitFlow(
     autoConfirm: boolean;
     stageAll: boolean;
   },
-): Promise<{ pushed: boolean }> {
+): Promise<void> {
   let diff = ctx.git.getStagedDiff(ctx.cwd);
   if (!diff.trim()) {
     diff = await stageChangesOrThrow(ctx, options.stageAll);
@@ -79,7 +79,7 @@ export async function runCommitFlow(
     if (options.autoConfirm) {
       ctx.git.commitWithMessage(ctx.cwd, message);
       emitSuccess(ctx.output, "Committed changes.");
-      return { pushed: false };
+      return;
     }
 
     const result = await promptForAction(ctx, message);
@@ -89,7 +89,13 @@ export async function runCommitFlow(
       continue;
     }
 
-    return applyCommitAction(result.action, ctx, result.message);
+    const pushed = applyCommitAction(result.action, ctx, result.message);
+
+    if (pushed) {
+      await offerPullRequest(ctx, options.config);
+    }
+
+    return;
   }
 }
 
@@ -193,21 +199,21 @@ async function switchBranchThenCommit(
   return "commit";
 }
 
-export async function applyCommitAction(
+function applyCommitAction(
   action: CommitAction,
   ctx: CliContext,
   message: string,
-): Promise<{ pushed: boolean }> {
+): boolean {
   switch (action) {
     case "commit":
       ctx.git.commitWithMessage(ctx.cwd, message);
       emitSuccess(ctx.output, "Committed changes.");
-      return { pushed: false };
+      return false;
     case "push": {
       ctx.git.commitWithMessage(ctx.cwd, message);
       const branchName = ctx.git.pushCurrentBranch(ctx.cwd);
       emitSuccess(ctx.output, `Committed and pushed branch: ${branchName}`);
-      return { pushed: true };
+      return true;
     }
     case "cancel":
       throw new UserError("Commit aborted.");
@@ -216,4 +222,32 @@ export async function applyCommitAction(
     case "regenerate":
       throw new UserError(`Unsupported commit action: ${action}`);
   }
+}
+
+function isFeatureBranch(branchName: string, baseBranch?: string): boolean {
+  if (baseBranch) {
+    return branchName !== baseBranch;
+  }
+  return branchName !== "main" && branchName !== "master";
+}
+
+async function offerPullRequest(ctx: CliContext, config: AppConfig): Promise<void> {
+  const currentBranch = ctx.git.getCurrentBranch(ctx.cwd);
+
+  if (!isFeatureBranch(currentBranch, config.defaultBaseBranch)) {
+    return;
+  }
+
+  const wantsPr = await ctx.prompt.confirm("Create a pull request?");
+  if (!wantsPr) {
+    return;
+  }
+
+  renderCommandHeader(ctx.output, "AutoGit PR", [
+    { label: "Branch", value: currentBranch },
+    { label: "Base", value: config.defaultBaseBranch ?? "(gh default)" },
+  ]);
+
+  ctx.git.createPullRequest(ctx.cwd, { base: config.defaultBaseBranch });
+  emitSuccess(ctx.output, "Pull request created via gh.");
 }

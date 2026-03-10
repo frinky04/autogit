@@ -43,7 +43,7 @@ export type CliContext = {
 };
 
 export type ParsedCommand = {
-  name: "commit" | "push" | "pr" | "branch-commit" | "gitignore" | "publish" | "status" | "guide" | "help";
+  name: "commit" | "push" | "pr" | "gitignore" | "publish" | "status" | "help";
   flags: Record<string, string | boolean>;
   positionals: string[];
 };

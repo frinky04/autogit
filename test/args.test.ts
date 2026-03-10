@@ -49,15 +49,7 @@ test("parseArgs handles status command", () => {
   assert.equal(parsed.name, "status");
 });
 
-test("parseArgs handles guide command", () => {
-  const parsed = parseArgs(["guide"]);
-
-  assert.equal(parsed.name, "guide");
-});
-
-test("parseArgs handles branch-commit positional branch", () => {
-  const parsed = parseArgs(["branch-commit", "feature/test"]);
-
-  assert.equal(parsed.name, "branch-commit");
-  assert.deepEqual(parsed.positionals, ["feature/test"]);
+test("parseArgs rejects unknown commands", () => {
+  assert.throws(() => parseArgs(["guide"]), { name: "UserError" });
+  assert.throws(() => parseArgs(["branch-commit"]), { name: "UserError" });
 });

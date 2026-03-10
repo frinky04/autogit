@@ -1,7 +1,6 @@
 import { helpText, parseArgs } from "./args.ts";
 import { runCommitFlow } from "./commands/commit.ts";
-import { runGuideFlow } from "./commands/guide.ts";
-import { loadConfig, requireApiKey } from "./config.ts";
+import { loadConfig } from "./config.ts";
 import { UserError } from "./errors.ts";
 import { gitClient as defaultGitClient } from "./git.ts";
 import { runGitignoreFlow } from "./gitignore.ts";
@@ -61,29 +60,6 @@ export async function runCli(
           autoConfirm: Boolean(parsed.flags.yes),
           stageAll: Boolean(parsed.flags.all),
         });
-        return 0;
-      }
-      case "branch-commit": {
-        const branchName = parsed.positionals[0];
-        if (!branchName) {
-          throw new UserError("branch-commit requires a branch name.");
-        }
-
-        ctx.git.switchToNewBranch(ctx.cwd, branchName);
-        emitSuccess(ctx.output, `Switched to new branch: ${branchName}`);
-
-        const model = getStringFlag(parsed.flags.model, config.model);
-        await runCommitFlow(ctx, {
-          config,
-          model,
-          reasoningMode: resolveReasoningMode(config.reasoningMode, parsed.flags),
-          autoConfirm: Boolean(parsed.flags.yes),
-          stageAll: Boolean(parsed.flags.all),
-        });
-        return 0;
-      }
-      case "guide": {
-        await runGuideFlow(ctx, config);
         return 0;
       }
       case "push": {

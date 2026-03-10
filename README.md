@@ -1,6 +1,6 @@
 # autogit
 
-`autogit` is a small CLI for AI-assisted git workflows using OpenRouter.
+A CLI for AI-assisted git commits using [OpenRouter](https://openrouter.ai).
 
 ## Commands
 
@@ -8,43 +8,71 @@
 autogit commit [--model <id>] [--yes] [--all] [--reasoning] [--no-reasoning]
 autogit push
 autogit pr [--base <branch>] [--title <title>] [--body <body>]
-autogit branch-commit <branch> [--model <id>] [--yes] [--all] [--reasoning] [--no-reasoning]
 autogit gitignore [--yes]
 autogit publish [<name>] [--public|--private] [--yes]
 autogit status
-autogit guide
 ```
 
-`autogit commit` now prompts to stage all changes when the working tree is dirty but nothing is staged. Use `--all` to skip that prompt and stage everything immediately.
-Reasoning uses `auto` mode by default, which lets OpenRouter/model defaults decide. Use `--reasoning` to force it on or `--no-reasoning` to request it off. If a provider rejects `off`, autogit retries once in `auto` mode.
-Commit generation uses token streaming when OpenRouter returns SSE, so you can see the commit message arrive in real time before confirmation.
-Regeneration now accepts optional feedback, so you can ask for changes like “shorter” or “more conventional” before rerunning generation.
-`autogit gitignore` inspects the project and creates or appends common `.gitignore` rules for detected stacks like Node.js, Python, and Rust.
-`autogit publish` creates a GitHub repository with `gh repo create`, sets `origin`, and pushes the current branch. It defaults to `private` unless you pass `--public`.
-`autogit status` shows branch/upstream and working-tree counts without needing OpenRouter configuration.
-`autogit guide` is a guided flow: status, commit generation, optional push, and optional PR creation.
-The terminal UI includes a lightweight spinner while the model is thinking, then switches cleanly into streamed output when tokens arrive.
-Interactive commits now offer actions after generation: commit, commit and push, edit, regenerate, or cancel.
+### `commit`
+
+The main command. Generates an AI commit message from your staged diff and walks you through the rest interactively:
+
+1. If nothing is staged, offers to stage all changes (or use `--all` to skip the prompt).
+2. Sends the diff to OpenRouter and streams the suggested commit message in real time.
+3. Presents an action menu:
+   - **Enter** — commit
+   - **p** — commit and push
+   - **b** — switch to a new branch, then commit
+   - **e** — edit the message
+   - **r** — regenerate (with optional feedback like "shorter" or "more conventional")
+   - **c** — cancel
+4. If you push from a feature branch, offers to create a pull request via `gh`.
+
+Use `--yes` to skip all prompts and commit immediately. Use `--model` to override the configured model for a single run.
+
+### `push`
+
+Pushes the current branch, setting upstream automatically if needed.
+
+### `pr`
+
+Creates a pull request via `gh pr create`. Useful when you've already pushed and just need to open the PR.
+
+### `gitignore`
+
+Detects your project stack (Node.js, Python, Rust) and appends common `.gitignore` rules. Use `--yes` to skip confirmation.
+
+### `publish`
+
+Creates a GitHub repository with `gh repo create`, sets `origin`, and pushes. Defaults to private; pass `--public` to override.
+
+### `status`
+
+Shows branch, upstream, and working-tree counts. Does not require OpenRouter configuration.
+
+## Reasoning
+
+Reasoning mode defaults to `auto`, letting the model/provider decide. Use `--reasoning` to force it on, `--no-reasoning` to request it off. If a provider rejects `off`, autogit retries once with `auto`.
 
 ## Configuration
 
-Required:
-
-- `OPENROUTER_API_KEY`
+Set `OPENROUTER_API_KEY` in your environment, or add `apiKey` to a config file.
 
 Optional environment variables:
 
-- `AUTOGIT_MODEL`
-- `OPENROUTER_BASE_URL`
-- `AUTOGIT_SYSTEM_PROMPT`
-- `AUTOGIT_DEFAULT_BASE_BRANCH`
-- `AUTOGIT_REASONING`
-- `AUTOGIT_CONFIG`
+| Variable | Purpose |
+|---|---|
+| `AUTOGIT_MODEL` | Override the default model |
+| `OPENROUTER_BASE_URL` | Override the OpenRouter API base URL |
+| `AUTOGIT_SYSTEM_PROMPT` | Override the commit generation prompt |
+| `AUTOGIT_DEFAULT_BASE_BRANCH` | Default PR base branch |
+| `AUTOGIT_REASONING` | Reasoning mode: `auto`, `on`, or `off` |
+| `AUTOGIT_CONFIG` | Path to a JSON config file |
 
-Optional config file locations:
+Config file locations (checked in order):
 
-- `./autogit.config.json`
-- `~/.config/autogit/config.json`
+1. `./autogit.config.json`
+2. `~/.config/autogit/config.json`
 
 Example config:
 
@@ -56,7 +84,7 @@ Example config:
 }
 ```
 
-## Local usage
+## Local development
 
 ```bash
 npm test

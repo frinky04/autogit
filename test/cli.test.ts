@@ -354,13 +354,13 @@ test("runCli status renders repository status without config", async () => {
   assert.ok(messages.some((message) => message.includes("Pending changes detected.")));
 });
 
-test("runCli guide can commit, push, and create PR", async () => {
+test("runCli commit offers PR after push on a feature branch", async () => {
   const commits: string[] = [];
-  const prs: Array<{ base?: string }> = [];
   const pushes: string[] = [];
+  const prs: Array<{ base?: string }> = [];
   const { messages, output } = makeMessageOutput();
 
-  const exitCode = await runCli(["guide"], {
+  const exitCode = await runCli(["commit"], {
     cwd: "/repo",
     env: {
       ...process.env,
@@ -369,10 +369,9 @@ test("runCli guide can commit, push, and create PR", async () => {
     output,
     prompt: {
       async confirm(message: string) {
-        if (message.includes("Create a pull request now?")) {
+        if (message.includes("Create a pull request?")) {
           return true;
         }
-
         return true;
       },
       async chooseCommitAction() {
@@ -381,40 +380,30 @@ test("runCli guide can commit, push, and create PR", async () => {
       async editMessage(message) {
         return message;
       },
-      async input() {
-        return "";
-      },
     },
     gitClient: makeGitClient({
-      getCurrentBranch() { return "feature/guide-flow"; },
-      getStatusSummary() {
-        return makeStatusSummary({
-          branchName: "feature/guide-flow", upstream: "origin/feature/guide-flow",
-          unstagedCount: 1, clean: false,
-        });
-      },
+      getCurrentBranch() { return "feature/my-feature"; },
       commitWithMessage(_, message) { commits.push(message); },
-      pushCurrentBranch() { pushes.push("feature/guide-flow"); return "feature/guide-flow"; },
+      pushCurrentBranch() { pushes.push("feature/my-feature"); return "feature/my-feature"; },
       createPullRequest(_, options) { prs.push(options); },
     }),
     async generateCommitMessage() {
-      return "feat: guided commit";
+      return "feat: new feature";
     },
   });
 
   assert.equal(exitCode, 0);
-  assert.deepEqual(commits, ["feat: guided commit"]);
-  assert.deepEqual(pushes, ["feature/guide-flow"]);
+  assert.deepEqual(commits, ["feat: new feature"]);
+  assert.deepEqual(pushes, ["feature/my-feature"]);
   assert.deepEqual(prs, [{ base: undefined }]);
-  assert.ok(messages.some((message) => message.includes("AutoGit Status")));
   assert.ok(messages.some((message) => message.includes("Pull request created via gh.")));
 });
 
-test("runCli guide skips PR prompt on main branch", async () => {
+test("runCli commit skips PR prompt when pushing on main", async () => {
   const prompts: string[] = [];
   const prs: Array<{ base?: string }> = [];
 
-  const exitCode = await runCli(["guide"], {
+  const exitCode = await runCli(["commit"], {
     cwd: "/repo",
     env: {
       ...process.env,
@@ -424,7 +413,7 @@ test("runCli guide skips PR prompt on main branch", async () => {
     prompt: {
       async confirm(message: string) {
         prompts.push(message);
-        return false;
+        return true;
       },
       async chooseCommitAction() {
         return "push";
@@ -432,23 +421,18 @@ test("runCli guide skips PR prompt on main branch", async () => {
       async editMessage(message) {
         return message;
       },
-      async input() {
-        return "";
-      },
     },
     gitClient: makeGitClient({
-      getStatusSummary() {
-        return makeStatusSummary({ branchName: "main", upstream: "origin/main", clean: false });
-      },
+      getCurrentBranch() { return "main"; },
       createPullRequest(_, options) { prs.push(options); },
     }),
     async generateCommitMessage() {
-      return "feat: guided commit";
+      return "feat: main branch push";
     },
   });
 
   assert.equal(exitCode, 0);
-  assert.ok(!prompts.includes("Create a pull request now?"));
+  assert.ok(!prompts.some((message) => message.includes("pull request")));
   assert.deepEqual(prs, []);
 });
 
