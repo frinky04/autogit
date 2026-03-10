@@ -4,7 +4,7 @@ import { UserError } from "./errors.ts";
 import { gitClient as defaultGitClient } from "./git.ts";
 import { runGitignoreFlow } from "./gitignore.ts";
 import { generateCommitMessage } from "./openrouter.ts";
-import { createConsoleOutput, createConsolePrompt } from "./output.ts";
+import { createConsoleOutput, createConsolePrompt, emitSuccess, emitWarn } from "./output.ts";
 import type {
   AppConfig,
   CommandDependencies,
@@ -77,11 +77,7 @@ export async function runCli(
         }
 
         gitClient.switchToNewBranch(cwd, branchName);
-        if (output.success) {
-          output.success(`Switched to new branch: ${branchName}`);
-        } else {
-          output.info(`Switched to new branch: ${branchName}`);
-        }
+        emitSuccess(output, `Switched to new branch: ${branchName}`);
 
         const model = getStringFlag(parsed.flags.model, config.model);
         await runCommitFlow({
@@ -116,11 +112,7 @@ export async function runCli(
           { label: "Branch", value: gitClient.getCurrentBranch(cwd) },
         ]);
         const branchName = gitClient.pushCurrentBranch(cwd);
-        if (output.success) {
-          output.success(`Pushed branch: ${branchName}`);
-        } else {
-          output.info(`Pushed branch: ${branchName}`);
-        }
+        emitSuccess(output, `Pushed branch: ${branchName}`);
         return 0;
       }
       case "pr": {
@@ -133,11 +125,7 @@ export async function runCli(
           { label: "Title", value: title ?? "(gh prompt)" },
         ]);
         gitClient.createPullRequest(cwd, { base, title, body });
-        if (output.success) {
-          output.success("Pull request created via gh.");
-        } else {
-          output.info("Pull request created via gh.");
-        }
+        emitSuccess(output, "Pull request created via gh.");
         return 0;
       }
       case "publish": {
@@ -164,11 +152,7 @@ export async function runCli(
           name: repoName,
           visibility,
         });
-        if (output.success) {
-          output.success(`Published GitHub repository: ${publishedName}`);
-        } else {
-          output.info(`Published GitHub repository: ${publishedName}`);
-        }
+        emitSuccess(output, `Published GitHub repository: ${publishedName}`);
         return 0;
       }
       default:
@@ -234,11 +218,11 @@ async function runCommitFlow(options: {
   const branchName = options.gitClient.getCurrentBranch(options.cwd);
   const stagedFiles = options.gitClient.getStagedFiles(options.cwd);
   const config = requireApiKey(options.config);
-  renderCommitHeader(options.output, {
-    branchName,
-    stagedFiles,
-    model: options.model,
-  });
+  renderCommandHeader(options.output, "AutoGit", [
+    { label: "Branch", value: branchName },
+    { label: "Staged", value: `${stagedFiles.length} file${stagedFiles.length === 1 ? "" : "s"}` },
+    { label: "Model", value: options.model },
+  ]);
 
   let message = "";
   let regenerateFeedback: string | undefined;
@@ -291,11 +275,7 @@ async function runCommitFlow(options: {
 
     if (options.autoConfirm) {
       options.gitClient.commitWithMessage(options.cwd, message);
-      if (options.output?.success) {
-        options.output.success("Committed changes.");
-      } else {
-        options.output?.info("Committed changes.");
-      }
+      emitSuccess(options.output, "Committed changes.");
       return { pushed: false };
     }
 
@@ -308,14 +288,7 @@ async function runCommitFlow(options: {
     }
 
     if (action === "branch") {
-      const nextBranchName = await requestBranchName(options.prompt);
-      options.gitClient.switchToNewBranch(options.cwd, nextBranchName);
-      if (options.output?.success) {
-        options.output.success(`Switched to new branch: ${nextBranchName}`);
-      } else {
-        options.output?.info(`Switched to new branch: ${nextBranchName}`);
-      }
-      return applyCommitAction("commit", options, message);
+      return switchBranchThenCommit(options, message);
     }
 
     if (action === "edit") {
@@ -334,14 +307,7 @@ async function runCommitFlow(options: {
         continue;
       }
       if (followUpAction === "branch") {
-        const nextBranchName = await requestBranchName(options.prompt);
-        options.gitClient.switchToNewBranch(options.cwd, nextBranchName);
-        if (options.output?.success) {
-          options.output.success(`Switched to new branch: ${nextBranchName}`);
-        } else {
-          options.output?.info(`Switched to new branch: ${nextBranchName}`);
-        }
-        return applyCommitAction("commit", options, message);
+        return switchBranchThenCommit(options, message);
       }
       return applyCommitAction(followUpAction, options, message);
     }
@@ -363,11 +329,7 @@ async function runGuideFlow(options: {
   renderStatus(options.output, status);
 
   if (status.clean) {
-    if (options.output?.success) {
-      options.output.success("Nothing to do. Working tree is clean.");
-    } else {
-      options.output?.info("Nothing to do. Working tree is clean.");
-    }
+    emitSuccess(options.output, "Nothing to do. Working tree is clean.");
     return;
   }
 
@@ -390,11 +352,7 @@ async function runGuideFlow(options: {
   if (!pushed && (await options.prompt.confirm("Push the current branch now?"))) {
     const branchName = options.gitClient.pushCurrentBranch(options.cwd);
     pushed = true;
-    if (options.output?.success) {
-      options.output.success(`Pushed branch: ${branchName}`);
-    } else {
-      options.output?.info(`Pushed branch: ${branchName}`);
-    }
+    emitSuccess(options.output, `Pushed branch: ${branchName}`);
   }
 
   if (
@@ -410,11 +368,7 @@ async function runGuideFlow(options: {
     options.gitClient.createPullRequest(options.cwd, {
       base: options.config.defaultBaseBranch,
     });
-    if (options.output?.success) {
-      options.output.success("Pull request created via gh.");
-    } else {
-      options.output?.info("Pull request created via gh.");
-    }
+    emitSuccess(options.output, "Pull request created via gh.");
   }
 }
 
@@ -465,37 +419,6 @@ function shouldOfferPullRequest(currentBranch: string, baseBranch?: string): boo
   return true;
 }
 
-function renderCommitHeader(
-  output: CommandDependencies["output"],
-  context: {
-    branchName: string;
-    stagedFiles: string[];
-    model: string;
-  },
-): void {
-  if (output?.headline) {
-    output.headline("AutoGit");
-  } else {
-    output?.info("AutoGit");
-  }
-
-  if (output?.keyValue) {
-    output.keyValue("Branch", context.branchName);
-    output.keyValue(
-      "Staged",
-      `${context.stagedFiles.length} file${context.stagedFiles.length === 1 ? "" : "s"}`,
-    );
-    output.keyValue("Model", context.model);
-  } else {
-    output?.info(`Branch: ${context.branchName}`);
-    output?.info(
-      `Staged: ${context.stagedFiles.length} file${context.stagedFiles.length === 1 ? "" : "s"}`,
-    );
-    output?.info(`Model: ${context.model}`);
-  }
-  output?.info("");
-}
-
 function renderCommandHeader(
   output: CommandDependencies["output"],
   title: string,
@@ -543,15 +466,9 @@ function renderStatus(output: CommandDependencies["output"], status: GitStatusSu
   output?.info("");
 
   if (status.clean) {
-    if (output?.success) {
-      output.success("Working tree is clean.");
-    } else {
-      output?.info("Working tree is clean.");
-    }
-  } else if (output?.warn) {
-    output.warn("Pending changes detected.");
+    emitSuccess(output, "Working tree is clean.");
   } else {
-    output?.info("Pending changes detected.");
+    emitWarn(output, "Pending changes detected.");
   }
 }
 
@@ -627,6 +544,21 @@ async function requestBranchName(
   return value;
 }
 
+async function switchBranchThenCommit(
+  options: {
+    cwd: string;
+    output: CommandDependencies["output"];
+    prompt: NonNullable<CommandDependencies["prompt"]>;
+    gitClient: NonNullable<CommandDependencies["gitClient"]>;
+  },
+  message: string,
+): Promise<{ pushed: boolean }> {
+  const branchName = await requestBranchName(options.prompt);
+  options.gitClient.switchToNewBranch(options.cwd, branchName);
+  emitSuccess(options.output, `Switched to new branch: ${branchName}`);
+  return applyCommitAction("commit", options, message);
+}
+
 async function applyCommitAction(
   action: CommitAction,
   options: {
@@ -639,20 +571,12 @@ async function applyCommitAction(
   switch (action) {
     case "commit":
       options.gitClient.commitWithMessage(options.cwd, message);
-      if (options.output?.success) {
-        options.output.success("Committed changes.");
-      } else {
-        options.output?.info("Committed changes.");
-      }
+      emitSuccess(options.output, "Committed changes.");
       return { pushed: false };
     case "push": {
       options.gitClient.commitWithMessage(options.cwd, message);
       const branchName = options.gitClient.pushCurrentBranch(options.cwd);
-      if (options.output?.success) {
-        options.output.success(`Committed and pushed branch: ${branchName}`);
-      } else {
-        options.output?.info(`Committed and pushed branch: ${branchName}`);
-      }
+      emitSuccess(options.output, `Committed and pushed branch: ${branchName}`);
       return { pushed: true };
     }
     case "cancel":
@@ -684,15 +608,10 @@ async function generateCommitMessageWithFallback(
       throw error;
     }
 
-    if (output?.warn) {
-      output.warn(
-        "Reasoning cannot be disabled for this model/provider. Retrying with provider-default reasoning.",
-      );
-    } else {
-      output?.info(
-        "Reasoning cannot be disabled for this model/provider. Retrying with provider-default reasoning.",
-      );
-    }
+    emitWarn(
+      output,
+      "Reasoning cannot be disabled for this model/provider. Retrying with provider-default reasoning.",
+    );
 
     return commitMessageGenerator(
       config,

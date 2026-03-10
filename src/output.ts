@@ -177,6 +177,22 @@ export function createConsolePrompt(): PromptHandler {
   };
 }
 
+export function emitSuccess(output: OutputWriter | undefined, message: string): void {
+  if (output?.success) {
+    output.success(message);
+  } else {
+    output?.info(message);
+  }
+}
+
+export function emitWarn(output: OutputWriter | undefined, message: string): void {
+  if (output?.warn) {
+    output.warn(message);
+  } else {
+    output?.info(message);
+  }
+}
+
 async function askLine(prompt: string): Promise<string> {
   const rl = readline.createInterface({ input: stdin, output: stdout });
 

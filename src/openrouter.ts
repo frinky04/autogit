@@ -60,7 +60,7 @@ async function parseJsonCommitMessage(response: Response): Promise<string> {
   };
 
   const content = json.choices?.[0]?.message?.content;
-  const text = flattenMessageContent(content);
+  const text = flattenContent(content);
   const sanitized = sanitizeCommitMessage(text);
 
   if (!sanitized) {
@@ -173,28 +173,10 @@ Staged diff:
 ${diff}`;
 }
 
-function flattenMessageContent(
-  content: string | Array<{ type?: string; text?: string }> | undefined,
-): string {
-  if (typeof content === "string") {
-    return content;
-  }
-
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => (part.type === "text" || !part.type ? part.text ?? "" : ""))
-      .join("")
-      .trim();
-  }
-
-  return "";
-}
-
-function flattenDeltaContent(
+function flattenContent(
   content:
     | string
-    | Array<{ type?: string; text?: string }>
-    | Array<{ type?: string; content?: string; text?: string }>
+    | Array<{ type?: string; text?: string; content?: string }>
     | undefined,
 ): string {
   if (typeof content === "string") {
@@ -261,7 +243,7 @@ function parseSseEvent(rawEvent: string): string {
   }
 
   const choice = parsed.choices?.[0];
-  return flattenDeltaContent(choice?.delta?.content) || flattenMessageContent(choice?.message?.content);
+  return flattenContent(choice?.delta?.content) || flattenContent(choice?.message?.content);
 }
 
 function buildReasoningBody(mode: OpenRouterRequest["reasoningMode"]):

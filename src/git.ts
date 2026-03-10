@@ -27,7 +27,7 @@ export function getStagedFiles(cwd: string): string[] {
 export function getStatusSummary(cwd: string): GitStatusSummary {
   const output = runCommand("git", ["status", "--porcelain=2", "--branch"], cwd).stdout;
   const summary: GitStatusSummary = {
-    branchName: getCurrentBranch(cwd),
+    branchName: "",
     upstream: undefined,
     ahead: 0,
     behind: 0,

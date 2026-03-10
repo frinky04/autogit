@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { UserError } from "./errors.ts";
+import { emitSuccess } from "./output.ts";
 import type { CommandDependencies } from "./types.ts";
 
 type IgnoreSection = {
@@ -35,11 +36,7 @@ export async function runGitignoreFlow(options: {
   options.output?.info("");
 
   if (result.addedEntries.length === 0) {
-    if (options.output?.success) {
-      options.output.success(".gitignore is already up to date.");
-    } else {
-      options.output?.info(".gitignore is already up to date.");
-    }
+    emitSuccess(options.output, ".gitignore is already up to date.");
     return;
   }
 
@@ -60,11 +57,7 @@ export async function runGitignoreFlow(options: {
   }
 
   fs.writeFileSync(result.filePath, result.nextContent, "utf8");
-  if (options.output?.success) {
-    options.output.success(`Updated .gitignore with ${result.addedEntries.length} entries.`);
-  } else {
-    options.output?.info(`Updated .gitignore with ${result.addedEntries.length} entries.`);
-  }
+  emitSuccess(options.output, `Updated .gitignore with ${result.addedEntries.length} entries.`);
 }
 
 export function detectIgnoreSections(projectRoot: string): IgnoreSection[] {

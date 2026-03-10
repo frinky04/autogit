@@ -6,6 +6,26 @@ import path from "node:path";
 
 import { UserError } from "../src/errors.ts";
 import { runCli } from "../src/cli.ts";
+import type { GitClient } from "../src/types.ts";
+
+function makeGitClient(overrides: Partial<GitClient> = {}): GitClient {
+  return {
+    ensureGitAvailable() {},
+    resolveRepoRoot() { return "/repo"; },
+    getCurrentBranch() { return "main"; },
+    getStagedFiles() { return ["file.txt"]; },
+    getStatusSummary() { return makeStatusSummary(); },
+    getStagedDiff() { return "diff --git a/file.txt b/file.txt"; },
+    hasWorkingTreeChanges() { return true; },
+    stageAllChanges() {},
+    commitWithMessage() {},
+    switchToNewBranch() {},
+    pushCurrentBranch() { return "main"; },
+    createPullRequest() {},
+    publishRepository() { return "repo"; },
+    ...overrides,
+  };
+}
 
 function makeStatusSummary(overrides: Partial<{
   branchName: string;
@@ -75,39 +95,9 @@ test("runCli commit creates a commit from staged changes", async () => {
         return message;
       },
     },
-    gitClient: {
-      ensureGitAvailable() {},
-      resolveRepoRoot() {
-        return "/repo";
-      },
-      getCurrentBranch() {
-        return "main";
-      },
-      getStagedFiles() {
-        return ["file.txt"];
-      },
-      getStatusSummary() {
-        return makeStatusSummary();
-      },
-      getStagedDiff() {
-        return "diff --git a/file.txt b/file.txt";
-      },
-      hasWorkingTreeChanges() {
-        return true;
-      },
-      stageAllChanges() {},
-      commitWithMessage(_, message) {
-        commits.push(message);
-      },
-      switchToNewBranch() {},
-      pushCurrentBranch() {
-        return "main";
-      },
-      createPullRequest() {},
-      publishRepository() {
-        return "repo";
-      },
-    },
+    gitClient: makeGitClient({
+      commitWithMessage(_, message) { commits.push(message); },
+    }),
     async generateCommitMessage(_, __, ___, options) {
       options?.onToken?.("feat: ");
       options?.onToken?.("add hello file");
@@ -157,39 +147,9 @@ test("runCli retries with auto reasoning when provider rejects no-reasoning", as
         return message;
       },
     },
-    gitClient: {
-      ensureGitAvailable() {},
-      resolveRepoRoot() {
-        return "/repo";
-      },
-      getCurrentBranch() {
-        return "main";
-      },
-      getStagedFiles() {
-        return ["file.txt"];
-      },
-      getStatusSummary() {
-        return makeStatusSummary();
-      },
-      getStagedDiff() {
-        return "diff --git a/file.txt b/file.txt";
-      },
-      hasWorkingTreeChanges() {
-        return true;
-      },
-      stageAllChanges() {},
-      commitWithMessage(_, message) {
-        commits.push(message);
-      },
-      switchToNewBranch() {},
-      pushCurrentBranch() {
-        return "main";
-      },
-      createPullRequest() {},
-      publishRepository() {
-        return "repo";
-      },
-    },
+    gitClient: makeGitClient({
+      commitWithMessage(_, message) { commits.push(message); },
+    }),
     async generateCommitMessage(_, request) {
       reasoningModes.push(request.reasoningMode);
 
@@ -249,41 +209,11 @@ test("runCli commit prompts to stage all when nothing is staged", async () => {
         return message;
       },
     },
-    gitClient: {
-      ensureGitAvailable() {},
-      resolveRepoRoot() {
-        return "/repo";
-      },
-      getCurrentBranch() {
-        return "main";
-      },
-      getStagedFiles() {
-        return ["file.txt"];
-      },
-      getStatusSummary() {
-        return makeStatusSummary();
-      },
-      getStagedDiff() {
-        return staged ? "diff --git a/file.txt b/file.txt" : "";
-      },
-      hasWorkingTreeChanges() {
-        return true;
-      },
-      stageAllChanges() {
-        staged = true;
-      },
-      commitWithMessage(_, message) {
-        commits.push(message);
-      },
-      switchToNewBranch() {},
-      pushCurrentBranch() {
-        return "main";
-      },
-      createPullRequest() {},
-      publishRepository() {
-        return "repo";
-      },
-    },
+    gitClient: makeGitClient({
+      getStagedDiff() { return staged ? "diff --git a/file.txt b/file.txt" : ""; },
+      stageAllChanges() { staged = true; },
+      commitWithMessage(_, message) { commits.push(message); },
+    }),
     async generateCommitMessage() {
       return "feat: stage and commit changes";
     },
@@ -316,41 +246,11 @@ test("runCli commit --all stages without prompting first", async () => {
         return true;
       },
     },
-    gitClient: {
-      ensureGitAvailable() {},
-      resolveRepoRoot() {
-        return "/repo";
-      },
-      getCurrentBranch() {
-        return "main";
-      },
-      getStagedFiles() {
-        return ["file.txt"];
-      },
-      getStatusSummary() {
-        return makeStatusSummary();
-      },
-      getStagedDiff() {
-        return staged ? "diff --git a/file.txt b/file.txt" : "";
-      },
-      hasWorkingTreeChanges() {
-        return true;
-      },
-      stageAllChanges() {
-        staged = true;
-      },
-      commitWithMessage(_, message) {
-        commits.push(message);
-      },
-      switchToNewBranch() {},
-      pushCurrentBranch() {
-        return "main";
-      },
-      createPullRequest() {},
-      publishRepository() {
-        return "repo";
-      },
-    },
+    gitClient: makeGitClient({
+      getStagedDiff() { return staged ? "diff --git a/file.txt b/file.txt" : ""; },
+      stageAllChanges() { staged = true; },
+      commitWithMessage(_, message) { commits.push(message); },
+    }),
     async generateCommitMessage() {
       return "feat: add staged changes";
     },
@@ -391,40 +291,10 @@ test("runCli commit can commit and push from the action prompt", async () => {
         return message;
       },
     },
-    gitClient: {
-      ensureGitAvailable() {},
-      resolveRepoRoot() {
-        return "/repo";
-      },
-      getCurrentBranch() {
-        return "main";
-      },
-      getStagedFiles() {
-        return ["file.txt"];
-      },
-      getStatusSummary() {
-        return makeStatusSummary();
-      },
-      getStagedDiff() {
-        return "diff --git a/file.txt b/file.txt";
-      },
-      hasWorkingTreeChanges() {
-        return true;
-      },
-      stageAllChanges() {},
-      commitWithMessage(_, message) {
-        commits.push(message);
-      },
-      switchToNewBranch() {},
-      pushCurrentBranch() {
-        pushes.push("main");
-        return "main";
-      },
-      createPullRequest() {},
-      publishRepository() {
-        return "repo";
-      },
-    },
+    gitClient: makeGitClient({
+      commitWithMessage(_, message) { commits.push(message); },
+      pushCurrentBranch() { pushes.push("main"); return "main"; },
+    }),
     async generateCommitMessage() {
       return "feat: commit and push";
     },
@@ -466,39 +336,9 @@ test("runCli commit can regenerate and edit before committing", async () => {
         return "make it shorter";
       },
     },
-    gitClient: {
-      ensureGitAvailable() {},
-      resolveRepoRoot() {
-        return "/repo";
-      },
-      getCurrentBranch() {
-        return "main";
-      },
-      getStagedFiles() {
-        return ["file.txt"];
-      },
-      getStatusSummary() {
-        return makeStatusSummary();
-      },
-      getStagedDiff() {
-        return "diff --git a/file.txt b/file.txt";
-      },
-      hasWorkingTreeChanges() {
-        return true;
-      },
-      stageAllChanges() {},
-      commitWithMessage(_, message) {
-        commits.push(message);
-      },
-      switchToNewBranch() {},
-      pushCurrentBranch() {
-        return "main";
-      },
-      createPullRequest() {},
-      publishRepository() {
-        return "repo";
-      },
-    },
+    gitClient: makeGitClient({
+      commitWithMessage(_, message) { commits.push(message); },
+    }),
     async generateCommitMessage(_, request) {
       feedback.push(request.regenerateFeedback ?? "");
       const value = generated.length === 0 ? "feat: first draft" : "feat: second draft";
@@ -526,43 +366,13 @@ test("runCli status renders repository status without config", async () => {
         messages.push(message);
       },
     },
-    gitClient: {
-      ensureGitAvailable() {},
-      resolveRepoRoot() {
-        return "/repo";
-      },
-      getCurrentBranch() {
-        return "main";
-      },
-      getStagedFiles() {
-        return [];
-      },
+    gitClient: makeGitClient({
       getStatusSummary() {
         return makeStatusSummary({
-          stagedCount: 2,
-          unstagedCount: 1,
-          untrackedCount: 3,
-          ahead: 1,
-          clean: false,
+          stagedCount: 2, unstagedCount: 1, untrackedCount: 3, ahead: 1, clean: false,
         });
       },
-      getStagedDiff() {
-        return "";
-      },
-      hasWorkingTreeChanges() {
-        return true;
-      },
-      stageAllChanges() {},
-      commitWithMessage() {},
-      switchToNewBranch() {},
-      pushCurrentBranch() {
-        return "main";
-      },
-      createPullRequest() {},
-      publishRepository() {
-        return "repo";
-      },
-    },
+    }),
   });
 
   assert.equal(exitCode, 0);
@@ -609,47 +419,18 @@ test("runCli guide can commit, push, and create PR", async () => {
         return "";
       },
     },
-    gitClient: {
-      ensureGitAvailable() {},
-      resolveRepoRoot() {
-        return "/repo";
-      },
-      getCurrentBranch() {
-        return "feature/guide-flow";
-      },
-      getStagedFiles() {
-        return ["file.txt"];
-      },
+    gitClient: makeGitClient({
+      getCurrentBranch() { return "feature/guide-flow"; },
       getStatusSummary() {
         return makeStatusSummary({
-          branchName: "feature/guide-flow",
-          upstream: "origin/feature/guide-flow",
-          unstagedCount: 1,
-          clean: false,
+          branchName: "feature/guide-flow", upstream: "origin/feature/guide-flow",
+          unstagedCount: 1, clean: false,
         });
       },
-      getStagedDiff() {
-        return "diff --git a/file.txt b/file.txt";
-      },
-      hasWorkingTreeChanges() {
-        return true;
-      },
-      stageAllChanges() {},
-      commitWithMessage(_, message) {
-        commits.push(message);
-      },
-      switchToNewBranch() {},
-      pushCurrentBranch() {
-        pushes.push("feature/guide-flow");
-        return "feature/guide-flow";
-      },
-      createPullRequest(_, options) {
-        prs.push(options);
-      },
-      publishRepository() {
-        return "repo";
-      },
-    },
+      commitWithMessage(_, message) { commits.push(message); },
+      pushCurrentBranch() { pushes.push("feature/guide-flow"); return "feature/guide-flow"; },
+      createPullRequest(_, options) { prs.push(options); },
+    }),
     async generateCommitMessage() {
       return "feat: guided commit";
     },
@@ -692,43 +473,12 @@ test("runCli guide skips PR prompt on main branch", async () => {
         return "";
       },
     },
-    gitClient: {
-      ensureGitAvailable() {},
-      resolveRepoRoot() {
-        return "/repo";
-      },
-      getCurrentBranch() {
-        return "main";
-      },
-      getStagedFiles() {
-        return ["file.txt"];
-      },
+    gitClient: makeGitClient({
       getStatusSummary() {
-        return makeStatusSummary({
-          branchName: "main",
-          upstream: "origin/main",
-          clean: false,
-        });
+        return makeStatusSummary({ branchName: "main", upstream: "origin/main", clean: false });
       },
-      getStagedDiff() {
-        return "diff --git a/file.txt b/file.txt";
-      },
-      hasWorkingTreeChanges() {
-        return true;
-      },
-      stageAllChanges() {},
-      commitWithMessage() {},
-      switchToNewBranch() {},
-      pushCurrentBranch() {
-        return "main";
-      },
-      createPullRequest(_, options) {
-        prs.push(options);
-      },
-      publishRepository() {
-        return "repo";
-      },
-    },
+      createPullRequest(_, options) { prs.push(options); },
+    }),
     async generateCommitMessage() {
       return "feat: guided commit";
     },
@@ -771,41 +521,11 @@ test("runCli commit can commit on a new branch from the action prompt", async ()
         return "";
       },
     },
-    gitClient: {
-      ensureGitAvailable() {},
-      resolveRepoRoot() {
-        return "/repo";
-      },
-      getCurrentBranch() {
-        return "main";
-      },
-      getStagedFiles() {
-        return ["file.txt"];
-      },
-      getStatusSummary() {
-        return makeStatusSummary();
-      },
-      getStagedDiff() {
-        return "diff --git a/file.txt b/file.txt";
-      },
-      hasWorkingTreeChanges() {
-        return true;
-      },
-      stageAllChanges() {},
-      commitWithMessage(_, message) {
-        commits.push(message);
-      },
-      switchToNewBranch(_, branchName) {
-        switchedBranches.push(branchName);
-      },
-      pushCurrentBranch() {
-        return "feature/new-branch";
-      },
-      createPullRequest() {},
-      publishRepository() {
-        return "repo";
-      },
-    },
+    gitClient: makeGitClient({
+      commitWithMessage(_, message) { commits.push(message); },
+      switchToNewBranch(_, branchName) { switchedBranches.push(branchName); },
+      pushCurrentBranch() { return "feature/new-branch"; },
+    }),
     async generateCommitMessage() {
       return "feat: branch commit";
     },
@@ -832,40 +552,11 @@ test("runCli push sets upstream when missing", async () => {
         output.push(message);
       },
     },
-    gitClient: {
-      ensureGitAvailable() {},
-      resolveRepoRoot() {
-        return "/repo";
-      },
-      getCurrentBranch() {
-        return "main";
-      },
-      getStagedFiles() {
-        return [];
-      },
-      getStatusSummary() {
-        return makeStatusSummary({
-          stagedCount: 0,
-          clean: true,
-        });
-      },
-      getStagedDiff() {
-        return "";
-      },
-      hasWorkingTreeChanges() {
-        return false;
-      },
-      stageAllChanges() {},
-      commitWithMessage() {},
-      switchToNewBranch() {},
-      pushCurrentBranch() {
-        return "feature/pushed";
-      },
-      createPullRequest() {},
-      publishRepository() {
-        return "repo";
-      },
-    },
+    gitClient: makeGitClient({
+      getStatusSummary() { return makeStatusSummary({ stagedCount: 0, clean: true }); },
+      hasWorkingTreeChanges() { return false; },
+      pushCurrentBranch() { return "feature/pushed"; },
+    }),
   });
 
   assert.equal(exitCode, 0);
@@ -914,41 +605,11 @@ test("runCli publish creates a private GitHub repo by default", async () => {
         messages.push(message);
       },
     },
-    gitClient: {
-      ensureGitAvailable() {},
-      resolveRepoRoot() {
-        return "/repo";
-      },
-      getCurrentBranch() {
-        return "main";
-      },
-      getStagedFiles() {
-        return [];
-      },
-      getStatusSummary() {
-        return makeStatusSummary({
-          stagedCount: 0,
-          clean: true,
-        });
-      },
-      getStagedDiff() {
-        return "";
-      },
-      hasWorkingTreeChanges() {
-        return false;
-      },
-      stageAllChanges() {},
-      commitWithMessage() {},
-      switchToNewBranch() {},
-      pushCurrentBranch() {
-        return "main";
-      },
-      createPullRequest() {},
-      publishRepository(_, options) {
-        publishCalls.push(options);
-        return options.name ?? "repo";
-      },
-    },
+    gitClient: makeGitClient({
+      getStatusSummary() { return makeStatusSummary({ stagedCount: 0, clean: true }); },
+      hasWorkingTreeChanges() { return false; },
+      publishRepository(_, options) { publishCalls.push(options); return options.name ?? "repo"; },
+    }),
   });
 
   assert.equal(exitCode, 0);

@@ -35,11 +35,15 @@ function loadConfigFile(cwd: string, env: NodeJS.ProcessEnv): PartialConfig {
   ].filter((value): value is string => Boolean(value));
 
   for (const candidatePath of candidatePaths) {
-    if (!fs.existsSync(candidatePath)) {
-      continue;
+    let raw: string;
+    try {
+      raw = fs.readFileSync(candidatePath, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        continue;
+      }
+      throw error;
     }
-
-    const raw = fs.readFileSync(candidatePath, "utf8");
     let parsed: unknown;
 
     try {
