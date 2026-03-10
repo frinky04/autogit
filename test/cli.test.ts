@@ -35,6 +35,9 @@ test("runCli commit creates a commit from staged changes", async () => {
       resolveRepoRoot() {
         return "/repo";
       },
+      getCurrentBranch() {
+        return "main";
+      },
       getStagedDiff() {
         return "diff --git a/file.txt b/file.txt";
       },
@@ -50,6 +53,9 @@ test("runCli commit creates a commit from staged changes", async () => {
         return "main";
       },
       createPullRequest() {},
+      publishRepository() {
+        return "repo";
+      },
     },
     async generateCommitMessage() {
       return "feat: add hello file";
@@ -90,6 +96,9 @@ test("runCli retries with auto reasoning when provider rejects no-reasoning", as
       resolveRepoRoot() {
         return "/repo";
       },
+      getCurrentBranch() {
+        return "main";
+      },
       getStagedDiff() {
         return "diff --git a/file.txt b/file.txt";
       },
@@ -105,6 +114,9 @@ test("runCli retries with auto reasoning when provider rejects no-reasoning", as
         return "main";
       },
       createPullRequest() {},
+      publishRepository() {
+        return "repo";
+      },
     },
     async generateCommitMessage(_, request) {
       reasoningModes.push(request.reasoningMode);
@@ -164,6 +176,9 @@ test("runCli commit prompts to stage all when nothing is staged", async () => {
       resolveRepoRoot() {
         return "/repo";
       },
+      getCurrentBranch() {
+        return "main";
+      },
       getStagedDiff() {
         return staged ? "diff --git a/file.txt b/file.txt" : "";
       },
@@ -181,6 +196,9 @@ test("runCli commit prompts to stage all when nothing is staged", async () => {
         return "main";
       },
       createPullRequest() {},
+      publishRepository() {
+        return "repo";
+      },
     },
     async generateCommitMessage() {
       return "feat: stage and commit changes";
@@ -219,6 +237,9 @@ test("runCli commit --all stages without prompting first", async () => {
       resolveRepoRoot() {
         return "/repo";
       },
+      getCurrentBranch() {
+        return "main";
+      },
       getStagedDiff() {
         return staged ? "diff --git a/file.txt b/file.txt" : "";
       },
@@ -236,6 +257,9 @@ test("runCli commit --all stages without prompting first", async () => {
         return "main";
       },
       createPullRequest() {},
+      publishRepository() {
+        return "repo";
+      },
     },
     async generateCommitMessage() {
       return "feat: add staged changes";
@@ -268,6 +292,9 @@ test("runCli push sets upstream when missing", async () => {
       resolveRepoRoot() {
         return "/repo";
       },
+      getCurrentBranch() {
+        return "main";
+      },
       getStagedDiff() {
         return "";
       },
@@ -281,6 +308,9 @@ test("runCli push sets upstream when missing", async () => {
         return "feature/pushed";
       },
       createPullRequest() {},
+      publishRepository() {
+        return "repo";
+      },
     },
   });
 
@@ -310,4 +340,55 @@ test("runCli gitignore writes ignore rules", async () => {
   assert.match(gitignore, /# Node\.js/);
   assert.match(gitignore, /node_modules\//);
   assert.ok(messages.some((message) => message.includes("Updated .gitignore")));
+});
+
+test("runCli publish creates a private GitHub repo by default", async () => {
+  const messages: string[] = [];
+  const publishCalls: Array<{ name?: string; visibility: "public" | "private" }> = [];
+
+  const exitCode = await runCli(["publish", "demo-repo", "--yes"], {
+    cwd: "/repo",
+    env: {
+      ...process.env,
+      OPENROUTER_API_KEY: "unused-for-publish",
+    },
+    output: {
+      info(message: string) {
+        messages.push(message);
+      },
+      error(message: string) {
+        messages.push(message);
+      },
+    },
+    gitClient: {
+      ensureGitAvailable() {},
+      resolveRepoRoot() {
+        return "/repo";
+      },
+      getCurrentBranch() {
+        return "main";
+      },
+      getStagedDiff() {
+        return "";
+      },
+      hasWorkingTreeChanges() {
+        return false;
+      },
+      stageAllChanges() {},
+      commitWithMessage() {},
+      switchToNewBranch() {},
+      pushCurrentBranch() {
+        return "main";
+      },
+      createPullRequest() {},
+      publishRepository(_, options) {
+        publishCalls.push(options);
+        return options.name ?? "repo";
+      },
+    },
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(publishCalls, [{ name: "demo-repo", visibility: "private" }]);
+  assert.ok(messages.some((message) => message.includes("Published GitHub repository: demo-repo")));
 });

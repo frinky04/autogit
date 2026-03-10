@@ -18,7 +18,7 @@ export type CommandDependencies = {
 };
 
 export type ParsedCommand = {
-  name: "commit" | "push" | "pr" | "branch-commit" | "gitignore" | "help";
+  name: "commit" | "push" | "pr" | "branch-commit" | "gitignore" | "publish" | "help";
   flags: Record<string, string | boolean>;
   positionals: string[];
 };
@@ -45,6 +45,7 @@ export type OpenRouterRequest = {
 export type GitClient = {
   ensureGitAvailable(cwd: string): void;
   resolveRepoRoot(cwd: string): string;
+  getCurrentBranch(cwd: string): string;
   getStagedDiff(cwd: string): string;
   hasWorkingTreeChanges(cwd: string): boolean;
   stageAllChanges(cwd: string): void;
@@ -59,6 +60,13 @@ export type GitClient = {
       body?: string;
     },
   ): void;
+  publishRepository(
+    cwd: string,
+    options: {
+      name?: string;
+      visibility: "public" | "private";
+    },
+  ): string;
 };
 
 export type CommitMessageGenerator = (

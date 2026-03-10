@@ -95,6 +95,31 @@ export async function runCli(
         output.info("Pull request created via gh.");
         return 0;
       }
+      case "publish": {
+        const visibility = resolvePublishVisibility(parsed.flags);
+        const repoRoot = gitClient.resolveRepoRoot(cwd);
+        const branchName = gitClient.getCurrentBranch(cwd);
+        const repoName = parsed.positionals[0];
+        const displayName = repoName ?? repoRoot.split(/[/\\]/).pop() ?? "repository";
+
+        output.info(
+          `Preparing to publish ${displayName} as a ${visibility} GitHub repository from branch ${branchName}.`,
+        );
+
+        if (!parsed.flags.yes) {
+          const confirmed = await prompt.confirm("Create the GitHub repository and push now?");
+          if (!confirmed) {
+            throw new UserError("Publish aborted.");
+          }
+        }
+
+        const publishedName = gitClient.publishRepository(cwd, {
+          name: repoName,
+          visibility,
+        });
+        output.info(`Published GitHub repository: ${publishedName}`);
+        return 0;
+      }
       default:
         return 1;
     }
@@ -211,6 +236,18 @@ function resolveReasoningMode(
   }
 
   return configReasoningMode;
+}
+
+function resolvePublishVisibility(flags: Record<string, string | boolean>): "public" | "private" {
+  if (flags.public && flags.private) {
+    throw new UserError("Use only one of --public or --private.");
+  }
+
+  if (flags.public) {
+    return "public";
+  }
+
+  return "private";
 }
 
 async function generateCommitMessageWithFallback(

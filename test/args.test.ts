@@ -34,6 +34,15 @@ test("parseArgs handles gitignore command", () => {
   assert.equal(parsed.flags.yes, true);
 });
 
+test("parseArgs handles publish command", () => {
+  const parsed = parseArgs(["publish", "my-repo", "--public", "--yes"]);
+
+  assert.equal(parsed.name, "publish");
+  assert.equal(parsed.positionals[0], "my-repo");
+  assert.equal(parsed.flags.public, true);
+  assert.equal(parsed.flags.yes, true);
+});
+
 test("parseArgs handles branch-commit positional branch", () => {
   const parsed = parseArgs(["branch-commit", "feature/test"]);
 

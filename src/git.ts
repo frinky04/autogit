@@ -78,9 +78,31 @@ export function createPullRequest(
   runCommand("gh", args, cwd);
 }
 
+export function publishRepository(
+  cwd: string,
+  options: {
+    name?: string;
+    visibility: "public" | "private";
+  },
+): string {
+  const repoRoot = resolveRepoRoot(cwd);
+  const repoName = options.name ?? path.basename(repoRoot);
+  const args = ["repo", "create"];
+
+  if (options.name) {
+    args.push(options.name);
+  }
+
+  args.push(`--${options.visibility}`, "--source", repoRoot, "--remote", "origin", "--push");
+  runCommand("gh", args, repoRoot);
+
+  return repoName;
+}
+
 export const gitClient: GitClient = {
   ensureGitAvailable,
   resolveRepoRoot,
+  getCurrentBranch,
   getStagedDiff,
   hasWorkingTreeChanges,
   stageAllChanges,
@@ -88,6 +110,7 @@ export const gitClient: GitClient = {
   switchToNewBranch,
   pushCurrentBranch,
   createPullRequest,
+  publishRepository,
 };
 
 function hasUpstream(cwd: string): boolean {

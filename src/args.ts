@@ -1,7 +1,7 @@
 import { UserError } from "./errors.ts";
 import type { ParsedCommand } from "./types.ts";
 
-const COMMANDS = new Set(["commit", "push", "pr", "branch-commit", "gitignore", "help"]);
+const COMMANDS = new Set(["commit", "push", "pr", "branch-commit", "gitignore", "publish", "help"]);
 
 export function parseArgs(argv: string[]): ParsedCommand {
   const [maybeCommand, ...rest] = argv;
@@ -29,7 +29,9 @@ export function parseArgs(argv: string[]): ParsedCommand {
       token === "--yes" ||
       token === "--all" ||
       token === "--reasoning" ||
-      token === "--no-reasoning"
+      token === "--no-reasoning" ||
+      token === "--public" ||
+      token === "--private"
     ) {
       flags[token.slice(2)] = true;
       continue;
@@ -65,6 +67,7 @@ Usage:
   autogit pr [--base <branch>] [--title <title>] [--body <body>]
   autogit branch-commit <branch> [--model <id>] [--yes] [--all] [--reasoning] [--no-reasoning]
   autogit gitignore [--yes]
+  autogit publish [<name>] [--public|--private] [--yes]
 
 Config:
   OPENROUTER_API_KEY            Required unless apiKey is set in config
