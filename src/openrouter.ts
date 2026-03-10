@@ -18,7 +18,7 @@ export async function generateCommitMessage(
       },
       {
         role: "user",
-        content: buildUserPrompt(request.diff, request.repoRoot),
+        content: buildUserPrompt(request.diff, request.repoRoot, request.regenerateFeedback),
       },
     ],
     temperature: 0.2,
@@ -150,7 +150,15 @@ export function sanitizeCommitMessage(message: string): string {
   return lines.join("\n").trim();
 }
 
-function buildUserPrompt(diff: string, repoRoot: string): string {
+function buildUserPrompt(
+  diff: string,
+  repoRoot: string,
+  regenerateFeedback?: string,
+): string {
+  const feedbackBlock = regenerateFeedback
+    ? `\nAdditional guidance for this regeneration:\n- ${regenerateFeedback}\n`
+    : "";
+
   return `Repository root: ${repoRoot}
 
 Write a git commit message for this staged diff.
@@ -159,6 +167,7 @@ Rules:
 - Keep the subject line concise and imperative.
 - Include a body only if it adds useful context.
 - Return only the commit message.
+${feedbackBlock}
 
 Staged diff:
 ${diff}`;

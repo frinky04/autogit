@@ -19,6 +19,7 @@ export type PromptHandler = {
   confirm(message: string): Promise<boolean>;
   chooseCommitAction?(message: string): Promise<CommitAction>;
   editMessage?(message: string): Promise<string | null>;
+  input?(message: string): Promise<string>;
 };
 
 export type CommandDependencies = {
@@ -32,7 +33,7 @@ export type CommandDependencies = {
 };
 
 export type ParsedCommand = {
-  name: "commit" | "push" | "pr" | "branch-commit" | "gitignore" | "publish" | "help";
+  name: "commit" | "push" | "pr" | "branch-commit" | "gitignore" | "publish" | "status" | "guide" | "help";
   flags: Record<string, string | boolean>;
   positionals: string[];
 };
@@ -54,6 +55,18 @@ export type OpenRouterRequest = {
   diff: string;
   repoRoot: string;
   reasoningMode: ReasoningMode;
+  regenerateFeedback?: string;
+};
+
+export type GitStatusSummary = {
+  branchName: string;
+  upstream?: string;
+  ahead: number;
+  behind: number;
+  stagedCount: number;
+  unstagedCount: number;
+  untrackedCount: number;
+  clean: boolean;
 };
 
 export type GitClient = {
@@ -61,6 +74,7 @@ export type GitClient = {
   resolveRepoRoot(cwd: string): string;
   getCurrentBranch(cwd: string): string;
   getStagedFiles(cwd: string): string[];
+  getStatusSummary(cwd: string): GitStatusSummary;
   getStagedDiff(cwd: string): string;
   hasWorkingTreeChanges(cwd: string): boolean;
   stageAllChanges(cwd: string): void;

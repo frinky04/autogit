@@ -127,7 +127,8 @@ export function createConsolePrompt(): PromptHandler {
       return /^y(es)?$/i.test(answer.trim());
     },
     async chooseCommitAction(message: string) {
-      const answer = (await askLine(`${message} `)).trim().toLowerCase();
+      const promptText = message.trim().length > 0 ? `${message} ` : "> ";
+      const answer = (await askLine(promptText)).trim().toLowerCase();
 
       const actionMap: Record<string, CommitAction> = {
         "": "commit",
@@ -168,6 +169,9 @@ export function createConsolePrompt(): PromptHandler {
 
       const edited = lines.join("\n").trim();
       return edited || null;
+    },
+    async input(message: string) {
+      return askLine(message);
     },
   };
 }

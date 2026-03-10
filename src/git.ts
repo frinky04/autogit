@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 
 import { UserError } from "./errors.ts";
-import type { GitClient } from "./types.ts";
+import type { GitClient, GitStatusSummary } from "./types.ts";
 
 export function ensureGitAvailable(cwd: string): void {
   runCommand("git", ["--version"], cwd);
@@ -22,6 +22,67 @@ export function getStagedFiles(cwd: string): string[] {
     .stdout.split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+export function getStatusSummary(cwd: string): GitStatusSummary {
+  const output = runCommand("git", ["status", "--porcelain=2", "--branch"], cwd).stdout;
+  const summary: GitStatusSummary = {
+    branchName: getCurrentBranch(cwd),
+    upstream: undefined,
+    ahead: 0,
+    behind: 0,
+    stagedCount: 0,
+    unstagedCount: 0,
+    untrackedCount: 0,
+    clean: true,
+  };
+
+  for (const rawLine of output.split(/\r?\n/)) {
+    const line = rawLine.trimEnd();
+    if (!line) {
+      continue;
+    }
+
+    if (line.startsWith("# branch.head ")) {
+      summary.branchName = line.slice("# branch.head ".length);
+      continue;
+    }
+
+    if (line.startsWith("# branch.upstream ")) {
+      summary.upstream = line.slice("# branch.upstream ".length);
+      continue;
+    }
+
+    if (line.startsWith("# branch.ab ")) {
+      const match = /# branch\.ab \+(\d+) \-(\d+)/.exec(line);
+      if (match) {
+        summary.ahead = Number(match[1]);
+        summary.behind = Number(match[2]);
+      }
+      continue;
+    }
+
+    if (line.startsWith("? ")) {
+      summary.untrackedCount += 1;
+      continue;
+    }
+
+    const statusCode = line[2] ?? ".";
+    const worktreeCode = line[3] ?? ".";
+    if (statusCode !== "." && statusCode !== " ") {
+      summary.stagedCount += 1;
+    }
+    if (worktreeCode !== "." && worktreeCode !== " ") {
+      summary.unstagedCount += 1;
+    }
+  }
+
+  summary.clean =
+    summary.stagedCount === 0 &&
+    summary.unstagedCount === 0 &&
+    summary.untrackedCount === 0;
+
+  return summary;
 }
 
 export function getStagedDiff(cwd: string): string {
@@ -111,6 +172,7 @@ export const gitClient: GitClient = {
   resolveRepoRoot,
   getCurrentBranch,
   getStagedFiles,
+  getStatusSummary,
   getStagedDiff,
   hasWorkingTreeChanges,
   stageAllChanges,

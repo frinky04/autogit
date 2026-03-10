@@ -5,7 +5,14 @@ import { gitClient as defaultGitClient } from "./git.ts";
 import { runGitignoreFlow } from "./gitignore.ts";
 import { generateCommitMessage } from "./openrouter.ts";
 import { createConsoleOutput, createConsolePrompt } from "./output.ts";
-import type { AppConfig, CommandDependencies, CommitAction, OpenRouterRequest, ReasoningMode } from "./types.ts";
+import type {
+  AppConfig,
+  CommandDependencies,
+  CommitAction,
+  GitStatusSummary,
+  OpenRouterRequest,
+  ReasoningMode,
+} from "./types.ts";
 
 export async function runCli(
   argv: string[],
@@ -33,6 +40,12 @@ export async function runCli(
         prompt,
         autoConfirm: Boolean(parsed.flags.yes),
       });
+      return 0;
+    }
+
+    if (parsed.name === "status") {
+      gitClient.ensureGitAvailable(cwd);
+      renderStatus(output, gitClient.getStatusSummary(cwd));
       return 0;
     }
 
@@ -64,7 +77,11 @@ export async function runCli(
         }
 
         gitClient.switchToNewBranch(cwd, branchName);
-        output.success?.(`Switched to new branch: ${branchName}`) ?? output.info(`Switched to new branch: ${branchName}`);
+        if (output.success) {
+          output.success(`Switched to new branch: ${branchName}`);
+        } else {
+          output.info(`Switched to new branch: ${branchName}`);
+        }
 
         const model = getStringFlag(parsed.flags.model, config.model);
         await runCommitFlow({
@@ -82,17 +99,45 @@ export async function runCli(
         });
         return 0;
       }
+      case "guide": {
+        await runGuideFlow({
+          cwd,
+          config,
+          output,
+          prompt,
+          fetchImpl,
+          gitClient,
+          commitMessageGenerator,
+        });
+        return 0;
+      }
       case "push": {
+        renderCommandHeader(output, "AutoGit Push", [
+          { label: "Branch", value: gitClient.getCurrentBranch(cwd) },
+        ]);
         const branchName = gitClient.pushCurrentBranch(cwd);
-        output.success?.(`Pushed branch: ${branchName}`) ?? output.info(`Pushed branch: ${branchName}`);
+        if (output.success) {
+          output.success(`Pushed branch: ${branchName}`);
+        } else {
+          output.info(`Pushed branch: ${branchName}`);
+        }
         return 0;
       }
       case "pr": {
         const base = getOptionalStringFlag(parsed.flags.base) ?? config.defaultBaseBranch;
         const title = getOptionalStringFlag(parsed.flags.title);
         const body = getOptionalStringFlag(parsed.flags.body);
+        renderCommandHeader(output, "AutoGit PR", [
+          { label: "Branch", value: gitClient.getCurrentBranch(cwd) },
+          { label: "Base", value: base ?? "(gh default)" },
+          { label: "Title", value: title ?? "(gh prompt)" },
+        ]);
         gitClient.createPullRequest(cwd, { base, title, body });
-        output.success?.("Pull request created via gh.") ?? output.info("Pull request created via gh.");
+        if (output.success) {
+          output.success("Pull request created via gh.");
+        } else {
+          output.info("Pull request created via gh.");
+        }
         return 0;
       }
       case "publish": {
@@ -102,9 +147,11 @@ export async function runCli(
         const repoName = parsed.positionals[0];
         const displayName = repoName ?? repoRoot.split(/[/\\]/).pop() ?? "repository";
 
-        output.info(
-          `Preparing to publish ${displayName} as a ${visibility} GitHub repository from branch ${branchName}.`,
-        );
+        renderCommandHeader(output, "AutoGit Publish", [
+          { label: "Repo", value: displayName },
+          { label: "Branch", value: branchName },
+          { label: "Visibility", value: visibility },
+        ]);
 
         if (!parsed.flags.yes) {
           const confirmed = await prompt.confirm("Create the GitHub repository and push now?");
@@ -117,8 +164,11 @@ export async function runCli(
           name: repoName,
           visibility,
         });
-        output.success?.(`Published GitHub repository: ${publishedName}`) ??
+        if (output.success) {
+          output.success(`Published GitHub repository: ${publishedName}`);
+        } else {
           output.info(`Published GitHub repository: ${publishedName}`);
+        }
         return 0;
       }
       default:
@@ -147,7 +197,7 @@ async function runCommitFlow(options: {
   commitMessageGenerator: NonNullable<CommandDependencies["generateCommitMessage"]>;
   autoConfirm: boolean;
   stageAll: boolean;
-}): Promise<void> {
+}): Promise<{ pushed: boolean }> {
   let diff = options.gitClient.getStagedDiff(options.cwd);
   if (!diff.trim()) {
     const hasWorkingTreeChanges = options.gitClient.hasWorkingTreeChanges(options.cwd);
@@ -191,6 +241,7 @@ async function runCommitFlow(options: {
   });
 
   let message = "";
+  let regenerateFeedback: string | undefined;
 
   while (true) {
     options.output?.startSpinner?.("Generating commit message");
@@ -201,6 +252,7 @@ async function runCommitFlow(options: {
       diff,
       repoRoot,
       reasoningMode: options.reasoningMode,
+      regenerateFeedback,
     };
 
     let streamedAny = false;
@@ -215,8 +267,11 @@ async function runCommitFlow(options: {
           if (!streamedAny) {
             options.output?.stopSpinner?.();
             options.output?.info("");
-            options.output?.headline?.("Suggested commit message") ??
+            if (options.output?.headline) {
+              options.output.headline("Suggested commit message");
+            } else {
               options.output?.info("Suggested commit message:");
+            }
             options.output?.info("");
           }
           streamedAny = true;
@@ -236,14 +291,19 @@ async function runCommitFlow(options: {
 
     if (options.autoConfirm) {
       options.gitClient.commitWithMessage(options.cwd, message);
-      options.output?.info("Committed changes.");
-      return;
+      if (options.output?.success) {
+        options.output.success("Committed changes.");
+      } else {
+        options.output?.info("Committed changes.");
+      }
+      return { pushed: false };
     }
 
     renderCommitActions(options.output);
     const action = await chooseCommitAction(options.prompt);
 
     if (action === "regenerate") {
+      regenerateFeedback = await requestRegenerateFeedback(options.prompt);
       continue;
     }
 
@@ -258,12 +318,77 @@ async function runCommitFlow(options: {
 
       renderCommitActions(options.output);
       const followUpAction = await chooseCommitAction(options.prompt);
-      await applyCommitAction(followUpAction, options, message);
-      return;
+      if (followUpAction === "regenerate") {
+        regenerateFeedback = await requestRegenerateFeedback(options.prompt);
+        continue;
+      }
+      return applyCommitAction(followUpAction, options, message);
     }
 
-    await applyCommitAction(action, options, message);
+    return applyCommitAction(action, options, message);
+  }
+}
+
+async function runGuideFlow(options: {
+  cwd: string;
+  config: AppConfig;
+  output: CommandDependencies["output"];
+  prompt: NonNullable<CommandDependencies["prompt"]>;
+  fetchImpl: typeof fetch;
+  gitClient: NonNullable<CommandDependencies["gitClient"]>;
+  commitMessageGenerator: NonNullable<CommandDependencies["generateCommitMessage"]>;
+}): Promise<void> {
+  const status = options.gitClient.getStatusSummary(options.cwd);
+  renderStatus(options.output, status);
+
+  if (status.clean) {
+    if (options.output?.success) {
+      options.output.success("Nothing to do. Working tree is clean.");
+    } else {
+      options.output?.info("Nothing to do. Working tree is clean.");
+    }
     return;
+  }
+
+  const result = await runCommitFlow({
+    cwd: options.cwd,
+    config: options.config,
+    model: options.config.model,
+    reasoningMode: options.config.reasoningMode,
+    output: options.output,
+    prompt: options.prompt,
+    fetchImpl: options.fetchImpl,
+    gitClient: options.gitClient,
+    commitMessageGenerator: options.commitMessageGenerator,
+    autoConfirm: false,
+    stageAll: false,
+  });
+
+  let pushed = result.pushed;
+  if (!pushed && (await options.prompt.confirm("Push the current branch now?"))) {
+    const branchName = options.gitClient.pushCurrentBranch(options.cwd);
+    pushed = true;
+    if (options.output?.success) {
+      options.output.success(`Pushed branch: ${branchName}`);
+    } else {
+      options.output?.info(`Pushed branch: ${branchName}`);
+    }
+  }
+
+  if (pushed && (await options.prompt.confirm("Create a pull request now?"))) {
+    renderCommandHeader(options.output, "AutoGit PR", [
+      { label: "Branch", value: options.gitClient.getCurrentBranch(options.cwd) },
+      { label: "Base", value: options.config.defaultBaseBranch ?? "(gh default)" },
+      { label: "Title", value: "(gh prompt)" },
+    ]);
+    options.gitClient.createPullRequest(options.cwd, {
+      base: options.config.defaultBaseBranch,
+    });
+    if (options.output?.success) {
+      options.output.success("Pull request created via gh.");
+    } else {
+      options.output?.info("Pull request created via gh.");
+    }
   }
 }
 
@@ -310,27 +435,102 @@ function renderCommitHeader(
     model: string;
   },
 ): void {
-  output?.headline?.("AutoGit") ?? output?.info("AutoGit");
-  output?.keyValue?.("Branch", context.branchName) ?? output?.info(`Branch: ${context.branchName}`);
-  output?.keyValue?.(
-    "Staged",
-    `${context.stagedFiles.length} file${context.stagedFiles.length === 1 ? "" : "s"}`,
-  ) ?? output?.info(
-    `Staged: ${context.stagedFiles.length} file${context.stagedFiles.length === 1 ? "" : "s"}`,
-  );
-  output?.keyValue?.("Model", context.model) ?? output?.info(`Model: ${context.model}`);
+  if (output?.headline) {
+    output.headline("AutoGit");
+  } else {
+    output?.info("AutoGit");
+  }
+
+  if (output?.keyValue) {
+    output.keyValue("Branch", context.branchName);
+    output.keyValue(
+      "Staged",
+      `${context.stagedFiles.length} file${context.stagedFiles.length === 1 ? "" : "s"}`,
+    );
+    output.keyValue("Model", context.model);
+  } else {
+    output?.info(`Branch: ${context.branchName}`);
+    output?.info(
+      `Staged: ${context.stagedFiles.length} file${context.stagedFiles.length === 1 ? "" : "s"}`,
+    );
+    output?.info(`Model: ${context.model}`);
+  }
   output?.info("");
 }
 
+function renderCommandHeader(
+  output: CommandDependencies["output"],
+  title: string,
+  items: Array<{ label: string; value: string }>,
+): void {
+  if (output?.headline) {
+    output.headline(title);
+  } else {
+    output?.info(title);
+  }
+
+  if (output?.keyValue) {
+    for (const item of items) {
+      output.keyValue(item.label, item.value);
+    }
+  } else {
+    for (const item of items) {
+      output?.info(`${item.label}: ${item.value}`);
+    }
+  }
+
+  output?.info("");
+}
+
+function renderStatus(output: CommandDependencies["output"], status: GitStatusSummary): void {
+  renderCommandHeader(output, "AutoGit Status", [
+    { label: "Branch", value: status.branchName },
+    { label: "Upstream", value: status.upstream ?? "(none)" },
+    { label: "Ahead", value: String(status.ahead) },
+    { label: "Behind", value: String(status.behind) },
+  ]);
+
+  const content = [
+    `Staged:    ${status.stagedCount}`,
+    `Unstaged:  ${status.unstagedCount}`,
+    `Untracked: ${status.untrackedCount}`,
+  ].join("\n");
+
+  if (output?.box) {
+    output.box("Working tree", content);
+  } else {
+    output?.info(content);
+  }
+
+  output?.info("");
+
+  if (status.clean) {
+    if (output?.success) {
+      output.success("Working tree is clean.");
+    } else {
+      output?.info("Working tree is clean.");
+    }
+  } else if (output?.warn) {
+    output.warn("Pending changes detected.");
+  } else {
+    output?.info("Pending changes detected.");
+  }
+}
+
 function renderCommitMessage(output: CommandDependencies["output"], message: string): void {
-  output?.box?.("Suggested commit message", message) ??
-    (output?.info("Suggested commit message:"), output?.info(""), output?.info(message), output?.info(""));
+  if (output?.box) {
+    output.box("Suggested commit message", message);
+  } else {
+    output?.info("Suggested commit message:");
+    output?.info("");
+    output?.info(message);
+  }
   output?.info("");
 }
 
 async function chooseCommitAction(prompt: NonNullable<CommandDependencies["prompt"]>): Promise<CommitAction> {
   if (prompt.chooseCommitAction) {
-    return prompt.chooseCommitAction("[Enter] commit  [p] commit & push  [e] edit  [r] regenerate  [c] cancel");
+    return prompt.chooseCommitAction("");
   }
 
   const confirmed = await prompt.confirm("Create commit with this message?");
@@ -338,13 +538,17 @@ async function chooseCommitAction(prompt: NonNullable<CommandDependencies["promp
 }
 
 function renderCommitActions(output: CommandDependencies["output"]): void {
-  output?.actionLine?.([
-    { key: "Enter", label: "Commit" },
-    { key: "p", label: "Commit & Push" },
-    { key: "e", label: "Edit" },
-    { key: "r", label: "Regenerate" },
-    { key: "c", label: "Cancel" },
-  ]) ?? output?.info("[Enter] commit  [p] commit & push  [e] edit  [r] regenerate  [c] cancel");
+  if (output?.actionLine) {
+    output.actionLine([
+      { key: "Enter", label: "Commit" },
+      { key: "p", label: "Commit & Push" },
+      { key: "e", label: "Edit" },
+      { key: "r", label: "Regenerate" },
+      { key: "c", label: "Cancel" },
+    ]);
+  } else {
+    output?.info("[Enter] commit  [p] commit & push  [e] edit  [r] regenerate  [c] cancel");
+  }
 }
 
 async function editCommitMessage(
@@ -358,6 +562,17 @@ async function editCommitMessage(
   return prompt.editMessage(message);
 }
 
+async function requestRegenerateFeedback(
+  prompt: NonNullable<CommandDependencies["prompt"]>,
+): Promise<string | undefined> {
+  if (!prompt.input) {
+    return undefined;
+  }
+
+  const value = (await prompt.input("Feedback for regeneration (optional): ")).trim();
+  return value || undefined;
+}
+
 async function applyCommitAction(
   action: CommitAction,
   options: {
@@ -366,18 +581,25 @@ async function applyCommitAction(
     gitClient: NonNullable<CommandDependencies["gitClient"]>;
   },
   message: string,
-): Promise<void> {
+): Promise<{ pushed: boolean }> {
   switch (action) {
     case "commit":
       options.gitClient.commitWithMessage(options.cwd, message);
-      options.output?.success?.("Committed changes.") ?? options.output?.info("Committed changes.");
-      return;
+      if (options.output?.success) {
+        options.output.success("Committed changes.");
+      } else {
+        options.output?.info("Committed changes.");
+      }
+      return { pushed: false };
     case "push": {
       options.gitClient.commitWithMessage(options.cwd, message);
       const branchName = options.gitClient.pushCurrentBranch(options.cwd);
-      options.output?.success?.(`Committed and pushed branch: ${branchName}`) ??
+      if (options.output?.success) {
+        options.output.success(`Committed and pushed branch: ${branchName}`);
+      } else {
         options.output?.info(`Committed and pushed branch: ${branchName}`);
-      return;
+      }
+      return { pushed: true };
     }
     case "cancel":
       throw new UserError("Commit aborted.");
@@ -408,11 +630,15 @@ async function generateCommitMessageWithFallback(
       throw error;
     }
 
-    output?.warn?.(
-      "Reasoning cannot be disabled for this model/provider. Retrying with provider-default reasoning.",
-    ) ?? output?.info(
-      "Reasoning cannot be disabled for this model/provider. Retrying with provider-default reasoning.",
-    );
+    if (output?.warn) {
+      output.warn(
+        "Reasoning cannot be disabled for this model/provider. Retrying with provider-default reasoning.",
+      );
+    } else {
+      output?.info(
+        "Reasoning cannot be disabled for this model/provider. Retrying with provider-default reasoning.",
+      );
+    }
 
     return commitMessageGenerator(
       config,

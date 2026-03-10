@@ -43,6 +43,18 @@ test("parseArgs handles publish command", () => {
   assert.equal(parsed.flags.yes, true);
 });
 
+test("parseArgs handles status command", () => {
+  const parsed = parseArgs(["status"]);
+
+  assert.equal(parsed.name, "status");
+});
+
+test("parseArgs handles guide command", () => {
+  const parsed = parseArgs(["guide"]);
+
+  assert.equal(parsed.name, "guide");
+});
+
 test("parseArgs handles branch-commit positional branch", () => {
   const parsed = parseArgs(["branch-commit", "feature/test"]);
 

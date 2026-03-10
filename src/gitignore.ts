@@ -19,14 +19,37 @@ export async function runGitignoreFlow(options: {
   const sections = detectIgnoreSections(projectRoot);
   const result = buildGitignoreUpdate(projectRoot, sections);
 
+  if (options.output?.headline) {
+    options.output.headline("AutoGit Gitignore");
+  } else {
+    options.output?.info("AutoGit Gitignore");
+  }
+
+  if (options.output?.keyValue) {
+    options.output.keyValue("Project", path.basename(projectRoot));
+    options.output.keyValue("Sections", String(sections.length));
+  } else {
+    options.output?.info(`Project: ${path.basename(projectRoot)}`);
+    options.output?.info(`Sections: ${sections.length}`);
+  }
+  options.output?.info("");
+
   if (result.addedEntries.length === 0) {
-    options.output?.info(".gitignore is already up to date.");
+    if (options.output?.success) {
+      options.output.success(".gitignore is already up to date.");
+    } else {
+      options.output?.info(".gitignore is already up to date.");
+    }
     return;
   }
 
-  options.output?.info("Proposed .gitignore additions:");
-  options.output?.info("");
-  options.output?.info(result.preview);
+  if (options.output?.box) {
+    options.output.box("Proposed .gitignore additions", result.preview);
+  } else {
+    options.output?.info("Proposed .gitignore additions:");
+    options.output?.info("");
+    options.output?.info(result.preview);
+  }
   options.output?.info("");
 
   if (!options.autoConfirm) {
@@ -37,7 +60,11 @@ export async function runGitignoreFlow(options: {
   }
 
   fs.writeFileSync(result.filePath, result.nextContent, "utf8");
-  options.output?.info(`Updated .gitignore with ${result.addedEntries.length} entries.`);
+  if (options.output?.success) {
+    options.output.success(`Updated .gitignore with ${result.addedEntries.length} entries.`);
+  } else {
+    options.output?.info(`Updated .gitignore with ${result.addedEntries.length} entries.`);
+  }
 }
 
 export function detectIgnoreSections(projectRoot: string): IgnoreSection[] {

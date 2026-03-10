@@ -7,6 +7,29 @@ import path from "node:path";
 import { UserError } from "../src/errors.ts";
 import { runCli } from "../src/cli.ts";
 
+function makeStatusSummary(overrides: Partial<{
+  branchName: string;
+  upstream?: string;
+  ahead: number;
+  behind: number;
+  stagedCount: number;
+  unstagedCount: number;
+  untrackedCount: number;
+  clean: boolean;
+}> = {}) {
+  return {
+    branchName: "main",
+    upstream: "origin/main",
+    ahead: 0,
+    behind: 0,
+    stagedCount: 1,
+    unstagedCount: 0,
+    untrackedCount: 0,
+    clean: false,
+    ...overrides,
+  };
+}
+
 test("runCli commit creates a commit from staged changes", async () => {
   const messages: string[] = [];
   const commits: string[] = [];
@@ -62,6 +85,9 @@ test("runCli commit creates a commit from staged changes", async () => {
       },
       getStagedFiles() {
         return ["file.txt"];
+      },
+      getStatusSummary() {
+        return makeStatusSummary();
       },
       getStagedDiff() {
         return "diff --git a/file.txt b/file.txt";
@@ -141,6 +167,9 @@ test("runCli retries with auto reasoning when provider rejects no-reasoning", as
       },
       getStagedFiles() {
         return ["file.txt"];
+      },
+      getStatusSummary() {
+        return makeStatusSummary();
       },
       getStagedDiff() {
         return "diff --git a/file.txt b/file.txt";
@@ -231,6 +260,9 @@ test("runCli commit prompts to stage all when nothing is staged", async () => {
       getStagedFiles() {
         return ["file.txt"];
       },
+      getStatusSummary() {
+        return makeStatusSummary();
+      },
       getStagedDiff() {
         return staged ? "diff --git a/file.txt b/file.txt" : "";
       },
@@ -294,6 +326,9 @@ test("runCli commit --all stages without prompting first", async () => {
       },
       getStagedFiles() {
         return ["file.txt"];
+      },
+      getStatusSummary() {
+        return makeStatusSummary();
       },
       getStagedDiff() {
         return staged ? "diff --git a/file.txt b/file.txt" : "";
@@ -367,6 +402,9 @@ test("runCli commit can commit and push from the action prompt", async () => {
       getStagedFiles() {
         return ["file.txt"];
       },
+      getStatusSummary() {
+        return makeStatusSummary();
+      },
       getStagedDiff() {
         return "diff --git a/file.txt b/file.txt";
       },
@@ -402,6 +440,7 @@ test("runCli commit can regenerate and edit before committing", async () => {
   const commits: string[] = [];
   const generated: string[] = [];
   const actions: Array<"regenerate" | "edit" | "commit"> = ["regenerate", "edit", "commit"];
+  const feedback: string[] = [];
 
   const exitCode = await runCli(["commit"], {
     cwd: "/repo",
@@ -423,6 +462,9 @@ test("runCli commit can regenerate and edit before committing", async () => {
       async editMessage() {
         return "feat: edited message";
       },
+      async input() {
+        return "make it shorter";
+      },
     },
     gitClient: {
       ensureGitAvailable() {},
@@ -434,6 +476,9 @@ test("runCli commit can regenerate and edit before committing", async () => {
       },
       getStagedFiles() {
         return ["file.txt"];
+      },
+      getStatusSummary() {
+        return makeStatusSummary();
       },
       getStagedDiff() {
         return "diff --git a/file.txt b/file.txt";
@@ -454,7 +499,8 @@ test("runCli commit can regenerate and edit before committing", async () => {
         return "repo";
       },
     },
-    async generateCommitMessage() {
+    async generateCommitMessage(_, request) {
+      feedback.push(request.regenerateFeedback ?? "");
       const value = generated.length === 0 ? "feat: first draft" : "feat: second draft";
       generated.push(value);
       return value;
@@ -463,7 +509,156 @@ test("runCli commit can regenerate and edit before committing", async () => {
 
   assert.equal(exitCode, 0);
   assert.deepEqual(generated, ["feat: first draft", "feat: second draft"]);
+  assert.deepEqual(feedback, ["", "make it shorter"]);
   assert.deepEqual(commits, ["feat: edited message"]);
+});
+
+test("runCli status renders repository status without config", async () => {
+  const messages: string[] = [];
+
+  const exitCode = await runCli(["status"], {
+    cwd: "/repo",
+    output: {
+      info(message: string) {
+        messages.push(message);
+      },
+      error(message: string) {
+        messages.push(message);
+      },
+    },
+    gitClient: {
+      ensureGitAvailable() {},
+      resolveRepoRoot() {
+        return "/repo";
+      },
+      getCurrentBranch() {
+        return "main";
+      },
+      getStagedFiles() {
+        return [];
+      },
+      getStatusSummary() {
+        return makeStatusSummary({
+          stagedCount: 2,
+          unstagedCount: 1,
+          untrackedCount: 3,
+          ahead: 1,
+          clean: false,
+        });
+      },
+      getStagedDiff() {
+        return "";
+      },
+      hasWorkingTreeChanges() {
+        return true;
+      },
+      stageAllChanges() {},
+      commitWithMessage() {},
+      switchToNewBranch() {},
+      pushCurrentBranch() {
+        return "main";
+      },
+      createPullRequest() {},
+      publishRepository() {
+        return "repo";
+      },
+    },
+  });
+
+  assert.equal(exitCode, 0);
+  assert.ok(messages.some((message) => message.includes("AutoGit Status")));
+  assert.ok(messages.some((message) => message.includes("Staged:    2")));
+  assert.ok(messages.some((message) => message.includes("Pending changes detected.")));
+});
+
+test("runCli guide can commit, push, and create PR", async () => {
+  const messages: string[] = [];
+  const commits: string[] = [];
+  const prs: Array<{ base?: string }> = [];
+  const pushes: string[] = [];
+
+  const exitCode = await runCli(["guide"], {
+    cwd: "/repo",
+    env: {
+      ...process.env,
+      OPENROUTER_API_KEY: "test-key",
+    },
+    output: {
+      info(message: string) {
+        messages.push(message);
+      },
+      error(message: string) {
+        messages.push(message);
+      },
+    },
+    prompt: {
+      async confirm(message: string) {
+        if (message.includes("Create a pull request now?")) {
+          return true;
+        }
+
+        return true;
+      },
+      async chooseCommitAction() {
+        return "push";
+      },
+      async editMessage(message) {
+        return message;
+      },
+      async input() {
+        return "";
+      },
+    },
+    gitClient: {
+      ensureGitAvailable() {},
+      resolveRepoRoot() {
+        return "/repo";
+      },
+      getCurrentBranch() {
+        return "main";
+      },
+      getStagedFiles() {
+        return ["file.txt"];
+      },
+      getStatusSummary() {
+        return makeStatusSummary({
+          unstagedCount: 1,
+          clean: false,
+        });
+      },
+      getStagedDiff() {
+        return "diff --git a/file.txt b/file.txt";
+      },
+      hasWorkingTreeChanges() {
+        return true;
+      },
+      stageAllChanges() {},
+      commitWithMessage(_, message) {
+        commits.push(message);
+      },
+      switchToNewBranch() {},
+      pushCurrentBranch() {
+        pushes.push("main");
+        return "main";
+      },
+      createPullRequest(_, options) {
+        prs.push(options);
+      },
+      publishRepository() {
+        return "repo";
+      },
+    },
+    async generateCommitMessage() {
+      return "feat: guided commit";
+    },
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(commits, ["feat: guided commit"]);
+  assert.deepEqual(pushes, ["main"]);
+  assert.deepEqual(prs, [{ base: undefined }]);
+  assert.ok(messages.some((message) => message.includes("AutoGit Status")));
+  assert.ok(messages.some((message) => message.includes("Pull request created via gh.")));
 });
 
 test("runCli push sets upstream when missing", async () => {
@@ -492,6 +687,12 @@ test("runCli push sets upstream when missing", async () => {
       },
       getStagedFiles() {
         return [];
+      },
+      getStatusSummary() {
+        return makeStatusSummary({
+          stagedCount: 0,
+          clean: true,
+        });
       },
       getStagedDiff() {
         return "";
@@ -568,6 +769,12 @@ test("runCli publish creates a private GitHub repo by default", async () => {
       },
       getStagedFiles() {
         return [];
+      },
+      getStatusSummary() {
+        return makeStatusSummary({
+          stagedCount: 0,
+          clean: true,
+        });
       },
       getStagedDiff() {
         return "";

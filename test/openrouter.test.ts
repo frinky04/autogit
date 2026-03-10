@@ -184,3 +184,43 @@ test("generateCommitMessage streams token chunks from SSE", async () => {
   assert.equal(message, "feat: add streaming");
   assert.deepEqual(streamed, ["feat: ", "add streaming"]);
 });
+
+test("generateCommitMessage includes regenerate feedback in the prompt", async () => {
+  let body: Record<string, unknown> | undefined;
+
+  const fetchImpl: typeof fetch = async (_, init) => {
+    body = JSON.parse(String(init?.body));
+
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: "feat: revised message" } }],
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  };
+
+  await generateCommitMessage(
+    {
+      apiKey: "test-key",
+      model: "qwen/qwen3-235b-a22b-2507",
+      baseUrl: "https://openrouter.ai/api/v1",
+      systemPrompt: "test prompt",
+      reasoningMode: "auto",
+    },
+    {
+      model: "qwen/qwen3-235b-a22b-2507",
+      systemPrompt: "test prompt",
+      diff: "diff --git a/file b/file",
+      repoRoot: "/repo",
+      reasoningMode: "auto",
+      regenerateFeedback: "make it shorter",
+    },
+    fetchImpl,
+  );
+
+  const messages = body?.messages as Array<{ role: string; content: string }>;
+  assert.ok(messages[1].content.includes("make it shorter"));
+});
