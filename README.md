@@ -40,7 +40,7 @@ Example config:
 
 ```json
 {
-  "model": "z-ai/glm-4.7-flash",
+  "model": "stepfun/step-3.5-flash",
   "defaultBaseBranch": "main",
   "reasoningMode": "auto"
 }

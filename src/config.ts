@@ -7,7 +7,7 @@ import type { AppConfig, ReasoningMode } from "./types.ts";
 
 type PartialConfig = Partial<AppConfig>;
 
-const DEFAULT_MODEL = "z-ai/glm-4.7-flash";
+const DEFAULT_MODEL = "stepfun/step-3.5-flash";
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_SYSTEM_PROMPT =
   "You write concise, high-signal git commit messages in Conventional Commit style when appropriate. Return only the commit message, with an optional body separated by a blank line. No code fences, no commentary.";
