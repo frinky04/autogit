@@ -14,6 +14,12 @@ export type OutputWriter = {
 };
 
 export type CommitAction = "commit" | "push" | "branch" | "edit" | "regenerate" | "cancel";
+export type PrAction = "create" | "regenerate" | "cancel";
+
+export type PullRequestDraft = {
+  title: string;
+  body: string;
+};
 
 export type ConfirmOptions = {
   defaultValue?: boolean;
@@ -22,6 +28,7 @@ export type ConfirmOptions = {
 export type PromptHandler = {
   confirm(message: string, options?: ConfirmOptions): Promise<boolean>;
   chooseCommitAction?(message: string): Promise<CommitAction>;
+  choosePrAction?(message: string): Promise<PrAction>;
   editMessage?(message: string): Promise<string | null>;
   input?(message: string): Promise<string>;
 };
@@ -34,6 +41,7 @@ export type CommandDependencies = {
   fetchImpl?: typeof fetch;
   gitClient?: GitClient;
   generateCommitMessage?: CommitMessageGenerator;
+  generatePullRequestDraft?: PullRequestDraftGenerator;
 };
 
 export type CliContext = {
@@ -44,6 +52,7 @@ export type CliContext = {
   fetchImpl: typeof fetch;
   git: GitClient;
   generateCommitMessage: CommitMessageGenerator;
+  generatePullRequestDraft: PullRequestDraftGenerator;
 };
 
 export type ParsedCommand = {
@@ -72,6 +81,18 @@ export type OpenRouterRequest = {
   regenerateFeedback?: string;
 };
 
+export type PullRequestDraftRequest = {
+  model: string;
+  systemPrompt: string;
+  diff: string;
+  repoRoot: string;
+  branchName: string;
+  baseBranch: string;
+  commitLog: string;
+  reasoningMode: ReasoningMode;
+  regenerateFeedback?: string;
+};
+
 export type GitStatusSummary = {
   branchName: string;
   upstream?: string;
@@ -91,6 +112,9 @@ export type GitClient = {
   getStatusSummary(cwd: string): GitStatusSummary;
   getStagedDiff(cwd: string): string;
   hasWorkingTreeChanges(cwd: string): boolean;
+  getDefaultBaseBranch(cwd: string): string | undefined;
+  getBranchDiff(cwd: string, baseBranch: string): string;
+  getCommitLog(cwd: string, baseBranch: string): string;
   stageAllChanges(cwd: string): void;
   commitWithMessage(cwd: string, message: string): void;
   switchToNewBranch(cwd: string, branchName: string): void;
@@ -120,3 +144,9 @@ export type CommitMessageGenerator = (
     onToken?: (token: string) => void;
   },
 ) => Promise<string>;
+
+export type PullRequestDraftGenerator = (
+  config: AppConfig & { apiKey: string },
+  request: PullRequestDraftRequest,
+  fetchImpl: typeof fetch,
+) => Promise<PullRequestDraft>;

@@ -7,7 +7,7 @@ A CLI for AI-assisted git commits using [OpenRouter](https://openrouter.ai).
 ```bash
 autogit commit [--model <id>] [--yes] [--all] [--reasoning] [--no-reasoning]
 autogit push
-autogit pr [--base <branch>] [--title <title>] [--body <body>]
+autogit pr [--base <branch>] [--model <id>] [--yes] [--reasoning] [--no-reasoning]
 autogit gitignore [--yes]
 autogit publish [<name>] [--public|--private] [--yes]
 autogit status
@@ -36,7 +36,15 @@ Pushes the current branch, setting upstream automatically if needed.
 
 ### `pr`
 
-Creates a pull request via `gh pr create`. Useful when you've already pushed and just need to open the PR.
+Generates a pull request draft with OpenRouter, then creates it via `gh pr create`:
+
+1. Verifies branch/base setup (uses `--base`, config default base, or detected remote default branch).
+2. Warns if uncommitted changes exist (they are not included in PR generation).
+3. Pushes the current branch.
+4. Diffs `base...HEAD` and asks OpenRouter for PR title + description.
+5. Lets you create immediately, regenerate with feedback, or cancel.
+
+Use `--yes` to skip prompts and create the PR from the first draft.
 
 ### `gitignore`
 

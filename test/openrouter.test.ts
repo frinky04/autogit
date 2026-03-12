@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { generateCommitMessage, sanitizeCommitMessage } from "../src/openrouter.ts";
+import { generateCommitMessage, generatePullRequestDraft, sanitizeCommitMessage } from "../src/openrouter.ts";
 
 test("sanitizeCommitMessage removes code fences", () => {
   const message = sanitizeCommitMessage("```text\nfeat: add cli\n```");
@@ -223,4 +223,86 @@ test("generateCommitMessage includes regenerate feedback in the prompt", async (
 
   const messages = body?.messages as Array<{ role: string; content: string }>;
   assert.ok(messages[1].content.includes("make it shorter"));
+});
+
+test("generatePullRequestDraft parses JSON title and body", async () => {
+  const fetchImpl: typeof fetch = async () =>
+    new Response(
+      JSON.stringify({
+        choices: [{ message: { content: '{"title":"feat: add PR flow","body":"## Summary\\n- add flow"}' } }],
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+
+  const draft = await generatePullRequestDraft(
+    {
+      apiKey: "test-key",
+      model: "qwen/qwen3-235b-a22b-2507",
+      baseUrl: "https://openrouter.ai/api/v1",
+      systemPrompt: "commit prompt",
+      reasoningMode: "auto",
+    },
+    {
+      model: "qwen/qwen3-235b-a22b-2507",
+      systemPrompt: "pr prompt",
+      diff: "diff --git a/file b/file",
+      repoRoot: "/repo",
+      branchName: "feature/new-pr-flow",
+      baseBranch: "main",
+      commitLog: "abc123 feat: improve flow",
+      reasoningMode: "auto",
+    },
+    fetchImpl,
+  );
+
+  assert.deepEqual(draft, {
+    title: "feat: add PR flow",
+    body: "## Summary\n- add flow",
+  });
+});
+
+test("generatePullRequestDraft includes regeneration feedback in prompt", async () => {
+  let body: Record<string, unknown> | undefined;
+
+  const fetchImpl: typeof fetch = async (_, init) => {
+    body = JSON.parse(String(init?.body));
+
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: '{"title":"feat: regenerate","body":"## Summary\\n- updated"}' } }],
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  };
+
+  await generatePullRequestDraft(
+    {
+      apiKey: "test-key",
+      model: "qwen/qwen3-235b-a22b-2507",
+      baseUrl: "https://openrouter.ai/api/v1",
+      systemPrompt: "commit prompt",
+      reasoningMode: "auto",
+    },
+    {
+      model: "qwen/qwen3-235b-a22b-2507",
+      systemPrompt: "pr prompt",
+      diff: "diff --git a/file b/file",
+      repoRoot: "/repo",
+      branchName: "feature/new-pr-flow",
+      baseBranch: "main",
+      commitLog: "abc123 feat: improve flow",
+      reasoningMode: "auto",
+      regenerateFeedback: "make testing section stronger",
+    },
+    fetchImpl,
+  );
+
+  const messages = body?.messages as Array<{ role: string; content: string }>;
+  assert.ok(messages[1].content.includes("make testing section stronger"));
 });

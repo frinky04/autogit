@@ -1,5 +1,13 @@
 import { UserError } from "./errors.ts";
-import type { AppConfig, CommitMessageGenerator, OpenRouterRequest, OutputWriter } from "./types.ts";
+import type {
+  AppConfig,
+  CommitMessageGenerator,
+  OpenRouterRequest,
+  OutputWriter,
+  PullRequestDraft,
+  PullRequestDraftGenerator,
+  PullRequestDraftRequest,
+} from "./types.ts";
 import { emitWarn } from "./output.ts";
 
 export async function generateCommitMessage(
@@ -45,13 +53,66 @@ export async function generateCommitMessage(
 
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("text/event-stream")) {
-    return parseStreamingCommitMessage(response, options.onToken);
+    return parseStreamingResponseText(
+      response,
+      "OpenRouter returned an empty commit message.",
+      options.onToken,
+    );
   }
 
-  return parseJsonCommitMessage(response);
+  return parseJsonResponseText(response, "OpenRouter returned an empty commit message.");
 }
 
-async function parseJsonCommitMessage(response: Response): Promise<string> {
+export async function generatePullRequestDraft(
+  config: AppConfig,
+  request: PullRequestDraftRequest,
+  fetchImpl: typeof fetch,
+): Promise<PullRequestDraft> {
+  const body = {
+    model: request.model,
+    messages: [
+      {
+        role: "system",
+        content: request.systemPrompt,
+      },
+      {
+        role: "user",
+        content: buildPullRequestUserPrompt(request),
+      },
+    ],
+    temperature: 0.2,
+    stream: false,
+    ...(buildReasoningBody(request.reasoningMode) ?? {}),
+  };
+
+  const response = await fetchImpl(`${trimTrailingSlash(config.baseUrl)}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://github.com/",
+      "X-Title": "autogit",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const responseBody = await response.text();
+    throw new UserError(`OpenRouter request failed (${response.status}): ${responseBody}`);
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  const text = contentType.includes("text/event-stream")
+    ? await parseStreamingResponseText(response, "OpenRouter returned an empty PR draft.")
+    : await parseJsonResponseText(response, "OpenRouter returned an empty PR draft.");
+
+  return parsePullRequestDraft(text);
+}
+
+async function parseJsonResponseText(
+  response: Response,
+  emptyErrorMessage: string,
+): Promise<string> {
   const json = (await response.json()) as {
     choices?: Array<{
       message?: {
@@ -65,14 +126,15 @@ async function parseJsonCommitMessage(response: Response): Promise<string> {
   const sanitized = sanitizeCommitMessage(text);
 
   if (!sanitized) {
-    throw new UserError("OpenRouter returned an empty commit message.");
+    throw new UserError(emptyErrorMessage);
   }
 
   return sanitized;
 }
 
-async function parseStreamingCommitMessage(
+async function parseStreamingResponseText(
   response: Response,
+  emptyErrorMessage: string,
   onToken?: (token: string) => void,
 ): Promise<string> {
   if (!response.body) {
@@ -117,7 +179,7 @@ async function parseStreamingCommitMessage(
 
   const sanitized = sanitizeCommitMessage(combined);
   if (!sanitized) {
-    throw new UserError("OpenRouter returned an empty commit message.");
+    throw new UserError(emptyErrorMessage);
   }
 
   return sanitized;
@@ -172,6 +234,98 @@ ${feedbackBlock}
 
 Staged diff:
 ${diff}`;
+}
+
+function buildPullRequestUserPrompt(request: PullRequestDraftRequest): string {
+  const feedbackBlock = request.regenerateFeedback
+    ? `\nAdditional guidance for this regeneration:\n- ${request.regenerateFeedback}\n`
+    : "";
+
+  const commitLogBlock = request.commitLog.trim()
+    ? request.commitLog
+    : "(No commit subjects found; use diff to infer changes.)";
+
+  return `Repository root: ${request.repoRoot}
+Head branch: ${request.branchName}
+Base branch: ${request.baseBranch}
+
+Generate a GitHub pull request draft from the branch diff.
+Return ONLY JSON with this shape:
+{
+  "title": "string",
+  "body": "markdown string"
+}
+
+Rules:
+- Title should be concise and specific.
+- Body should include: Summary, Key Changes, Testing.
+- Mention notable risk or follow-up items when relevant.
+- Do not wrap JSON in code fences.
+${feedbackBlock}
+
+Commit subjects between base and head:
+${commitLogBlock}
+
+Diff:
+${request.diff}`;
+}
+
+function parsePullRequestDraft(content: string): PullRequestDraft {
+  const normalized = sanitizeCommitMessage(content);
+  const direct = tryParseJsonObject(normalized);
+  if (direct) {
+    return direct;
+  }
+
+  const fencedMatch = normalized.match(/\{[\s\S]*\}/);
+  if (fencedMatch) {
+    const extracted = tryParseJsonObject(fencedMatch[0]);
+    if (extracted) {
+      return extracted;
+    }
+  }
+
+  const lines = normalized
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd());
+  const titleIndex = lines.findIndex((line) => line.trim().length > 0);
+  const title = titleIndex >= 0 ? lines[titleIndex].trim() : "";
+  const body = lines.slice(titleIndex >= 0 ? titleIndex + 1 : 1).join("\n").trim();
+
+  if (!title) {
+    throw new UserError("OpenRouter returned an invalid PR draft (missing title).");
+  }
+
+  return {
+    title,
+    body: body || "No additional description provided.",
+  };
+}
+
+function tryParseJsonObject(value: string): PullRequestDraft | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null;
+  }
+
+  const record = parsed as Record<string, unknown>;
+  const title = typeof record.title === "string" ? record.title.trim() : "";
+  const body = typeof record.body === "string" ? record.body.trim() : "";
+
+  if (!title) {
+    return null;
+  }
+
+  return {
+    title,
+    body: body || "No additional description provided.",
+  };
 }
 
 function flattenContent(
@@ -290,6 +444,37 @@ export async function generateCommitMessageWithFallback(
       { ...request, reasoningMode: "auto" },
       fetchImpl,
       options,
+    );
+  }
+}
+
+export async function generatePullRequestDraftWithFallback(
+  config: AppConfig & { apiKey: string },
+  request: PullRequestDraftRequest,
+  fetchImpl: typeof fetch,
+  generator: PullRequestDraftGenerator,
+  output: OutputWriter,
+): Promise<PullRequestDraft> {
+  try {
+    return await generator(config, request, fetchImpl);
+  } catch (error) {
+    if (!(error instanceof UserError)) {
+      throw error;
+    }
+
+    if (request.reasoningMode !== "off" || !isMandatoryReasoningError(error.message)) {
+      throw error;
+    }
+
+    emitWarn(
+      output,
+      "Reasoning cannot be disabled for this model/provider. Retrying with provider-default reasoning.",
+    );
+
+    return generator(
+      config,
+      { ...request, reasoningMode: "auto" },
+      fetchImpl,
     );
   }
 }

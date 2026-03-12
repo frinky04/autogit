@@ -1,4 +1,4 @@
-import type { GitStatusSummary, OutputWriter } from "./types.ts";
+import type { GitStatusSummary, OutputWriter, PullRequestDraft } from "./types.ts";
 import { emitSuccess, emitWarn } from "./output.ts";
 
 export function renderCommandHeader(
@@ -48,6 +48,21 @@ export function renderCommitActions(output: OutputWriter): void {
     { key: "p", label: "Commit & Push" },
     { key: "b", label: "New Branch" },
     { key: "e", label: "Edit" },
+    { key: "r", label: "Regenerate" },
+    { key: "c", label: "Cancel" },
+  ]);
+}
+
+export function renderPullRequestDraft(output: OutputWriter, draft: PullRequestDraft): void {
+  output.box("Suggested PR title", draft.title);
+  output.info("");
+  output.box("Suggested PR description", draft.body);
+  output.info("");
+}
+
+export function renderPrActions(output: OutputWriter): void {
+  output.actionLine([
+    { key: "Enter", label: "Create PR" },
     { key: "r", label: "Regenerate" },
     { key: "c", label: "Cancel" },
   ]);

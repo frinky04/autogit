@@ -103,6 +103,51 @@ export function hasWorkingTreeChanges(cwd: string): boolean {
   return runCommand("git", ["status", "--porcelain"], cwd).stdout.trim().length > 0;
 }
 
+export function getDefaultBaseBranch(cwd: string): string | undefined {
+  const remoteHead = runCommandOptional(
+    "git",
+    ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+    cwd,
+  );
+
+  if (remoteHead?.status === 0) {
+    const ref = remoteHead.stdout.trim();
+    const prefix = "origin/";
+    if (ref.startsWith(prefix)) {
+      const branchName = ref.slice(prefix.length).trim();
+      if (branchName) {
+        return branchName;
+      }
+    }
+  }
+
+  for (const candidate of ["main", "master"]) {
+    if (refExists(cwd, candidate) || refExists(cwd, `origin/${candidate}`)) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+export function getBranchDiff(cwd: string, baseBranch: string): string {
+  const baseRef = resolveBaseRef(cwd, baseBranch);
+  return runCommand(
+    "git",
+    ["diff", "--no-ext-diff", "--unified=3", "--minimal", `${baseRef}...HEAD`],
+    cwd,
+  ).stdout;
+}
+
+export function getCommitLog(cwd: string, baseBranch: string): string {
+  const baseRef = resolveBaseRef(cwd, baseBranch);
+  return runCommand(
+    "git",
+    ["log", "--no-merges", "--pretty=format:%h %s", "--reverse", `${baseRef}..HEAD`],
+    cwd,
+  ).stdout;
+}
+
 export function stageAllChanges(cwd: string): void {
   runCommand("git", ["add", "--all"], cwd);
 }
@@ -181,6 +226,9 @@ export const gitClient: GitClient = {
   getStatusSummary,
   getStagedDiff,
   hasWorkingTreeChanges,
+  getDefaultBaseBranch,
+  getBranchDiff,
+  getCommitLog,
   stageAllChanges,
   commitWithMessage,
   switchToNewBranch,
@@ -201,6 +249,24 @@ function hasUpstream(cwd: string): boolean {
   );
 
   return result.status === 0;
+}
+
+function refExists(cwd: string, ref: string): boolean {
+  const result = runCommandOptional("git", ["rev-parse", "--verify", "--quiet", ref], cwd);
+  return Boolean(result && result.status === 0);
+}
+
+function resolveBaseRef(cwd: string, baseBranch: string): string {
+  if (refExists(cwd, baseBranch)) {
+    return baseBranch;
+  }
+
+  const remoteRef = `origin/${baseBranch}`;
+  if (refExists(cwd, remoteRef)) {
+    return remoteRef;
+  }
+
+  throw new UserError(`Base branch not found locally or on origin: ${baseBranch}`);
 }
 
 function runCommand(command: string, args: string[], cwd: string, input?: string) {
@@ -224,6 +290,25 @@ function runCommand(command: string, args: string[], cwd: string, input?: string
     const stdout = result.stdout.trim();
     const message = stderr || stdout || `${command} exited with status ${result.status}`;
     throw new UserError(message);
+  }
+
+  return result;
+}
+
+function runCommandOptional(command: string, args: string[], cwd: string, input?: string) {
+  const result = spawnSync(command, args, {
+    cwd,
+    input,
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  if (result.error) {
+    if ((result.error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new UserError(`Required command not found on PATH: ${command}`);
+    }
+
+    throw result.error;
   }
 
   return result;

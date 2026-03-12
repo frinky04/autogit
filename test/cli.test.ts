@@ -38,6 +38,9 @@ function makeGitClient(overrides: Partial<GitClient> = {}): GitClient {
     getStatusSummary() { return makeStatusSummary(); },
     getStagedDiff() { return "diff --git a/file.txt b/file.txt"; },
     hasWorkingTreeChanges() { return true; },
+    getDefaultBaseBranch() { return "main"; },
+    getBranchDiff() { return "diff --git a/file.txt b/file.txt"; },
+    getCommitLog() { return "abc123 feat: update file"; },
     stageAllChanges() {},
     commitWithMessage() {},
     switchToNewBranch() {},
@@ -502,6 +505,102 @@ test("runCli push sets upstream when missing", async () => {
 
   assert.equal(exitCode, 0);
   assert.ok(messages.some((message) => message.includes("Pushed branch")));
+});
+
+test("runCli pr generates a draft, pushes, and creates the PR", async () => {
+  const pushes: string[] = [];
+  const prs: Array<{ base?: string; title?: string; body?: string }> = [];
+  const requests: string[] = [];
+
+  const exitCode = await runCli(["pr"], {
+    cwd: "/repo",
+    env: {
+      ...process.env,
+      OPENROUTER_API_KEY: "test-key",
+    },
+    output: makeOutput(),
+    prompt: {
+      async confirm() {
+        return true;
+      },
+      async choosePrAction() {
+        return "create";
+      },
+    },
+    gitClient: makeGitClient({
+      getCurrentBranch() { return "feature/new-pr-flow"; },
+      pushCurrentBranch() { pushes.push("feature/new-pr-flow"); return "feature/new-pr-flow"; },
+      createPullRequest(_, options) { prs.push(options); },
+    }),
+    async generatePullRequestDraft(_, request) {
+      requests.push(request.baseBranch);
+      return {
+        title: "feat: improve PR automation flow",
+        body: "## Summary\n- Improve generated pull request metadata.\n\n## Testing\n- npm test",
+      };
+    },
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(pushes, ["feature/new-pr-flow"]);
+  assert.deepEqual(requests, ["main"]);
+  assert.deepEqual(prs, [{
+    base: "main",
+    title: "feat: improve PR automation flow",
+    body: "## Summary\n- Improve generated pull request metadata.\n\n## Testing\n- npm test",
+  }]);
+});
+
+test("runCli pr supports regeneration with feedback", async () => {
+  const actionQueue: Array<"regenerate" | "create"> = ["regenerate", "create"];
+  const feedbackValues: string[] = [];
+  const prs: Array<{ title?: string; body?: string }> = [];
+
+  const exitCode = await runCli(["pr"], {
+    cwd: "/repo",
+    env: {
+      ...process.env,
+      OPENROUTER_API_KEY: "test-key",
+    },
+    output: makeOutput(),
+    prompt: {
+      async confirm() {
+        return true;
+      },
+      async choosePrAction() {
+        return actionQueue.shift() ?? "create";
+      },
+      async input() {
+        return "focus more on test coverage";
+      },
+    },
+    gitClient: makeGitClient({
+      getCurrentBranch() { return "feature/regenerate-pr"; },
+      createPullRequest(_, options) { prs.push(options); },
+    }),
+    async generatePullRequestDraft(_, request) {
+      feedbackValues.push(request.regenerateFeedback ?? "");
+      if (feedbackValues.length === 1) {
+        return {
+          title: "feat: first draft title",
+          body: "## Summary\n- initial draft",
+        };
+      }
+
+      return {
+        title: "feat: improved draft title",
+        body: "## Summary\n- improved draft\n\n## Testing\n- npm test",
+      };
+    },
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(feedbackValues, ["", "focus more on test coverage"]);
+  assert.deepEqual(prs, [{
+    base: "main",
+    title: "feat: improved draft title",
+    body: "## Summary\n- improved draft\n\n## Testing\n- npm test",
+  }]);
 });
 
 test("runCli gitignore writes ignore rules", async () => {

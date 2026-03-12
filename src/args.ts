@@ -37,7 +37,7 @@ export function parseArgs(argv: string[]): ParsedCommand {
       continue;
     }
 
-    if (token === "--model" || token === "--base" || token === "--title" || token === "--body") {
+    if (token === "--model" || token === "--base") {
       const value = rest[index + 1];
       if (!value || value.startsWith("-")) {
         throw new UserError(`Flag ${token} requires a value.`);
@@ -64,15 +64,14 @@ export function helpText(): string {
 Usage:
   autogit commit [--model <id>] [--yes] [--all] [--reasoning] [--no-reasoning]
   autogit push
-  autogit pr [--base <branch>] [--title <title>] [--body <body>]
+  autogit pr [--base <branch>] [--model <id>] [--yes] [--reasoning] [--no-reasoning]
   autogit gitignore [--yes]
   autogit publish [<name>] [--public|--private] [--yes]
   autogit status
 
-The commit command is the main interactive flow. After generating an
-AI commit message, you can commit, push, switch branch, edit, or
-regenerate. If you push from a feature branch, you will be offered
-to create a pull request.
+The commit and pr commands are interactive AI flows. Commit can
+commit/push/switch/edit/regenerate. PR can push, generate title/body,
+regenerate with feedback, and create via gh.
 
 Config:
   OPENROUTER_API_KEY            Required unless apiKey is set in config

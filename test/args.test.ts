@@ -49,6 +49,15 @@ test("parseArgs handles status command", () => {
   assert.equal(parsed.name, "status");
 });
 
+test("parseArgs handles pr flags", () => {
+  const parsed = parseArgs(["pr", "--base", "develop", "--model", "openai/gpt-5-mini", "--yes"]);
+
+  assert.equal(parsed.name, "pr");
+  assert.equal(parsed.flags.base, "develop");
+  assert.equal(parsed.flags.model, "openai/gpt-5-mini");
+  assert.equal(parsed.flags.yes, true);
+});
+
 test("parseArgs rejects unknown commands", () => {
   assert.throws(() => parseArgs(["guide"]), { name: "UserError" });
   assert.throws(() => parseArgs(["branch-commit"]), { name: "UserError" });

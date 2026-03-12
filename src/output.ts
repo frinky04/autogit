@@ -1,7 +1,7 @@
 import readline from "node:readline/promises";
 import { stdin, stdout, stderr } from "node:process";
 
-import type { CommitAction, ConfirmOptions, OutputWriter, PromptHandler } from "./types.ts";
+import type { CommitAction, ConfirmOptions, OutputWriter, PrAction, PromptHandler } from "./types.ts";
 
 export function createConsoleOutput(): OutputWriter {
   const spinnerFrames = ["-", "\\", "|", "/"];
@@ -142,6 +142,18 @@ export function createConsolePrompt(): PromptHandler {
         p: "push",
         b: "branch",
         e: "edit",
+        r: "regenerate",
+        c: "cancel",
+      };
+
+      return actionMap[answer] ?? "cancel";
+    },
+    async choosePrAction(message: string) {
+      const promptText = message.trim().length > 0 ? `${message} ` : "> ";
+      const answer = (await askLine(promptText)).trim().toLowerCase();
+
+      const actionMap: Record<string, PrAction> = {
+        "": "create",
         r: "regenerate",
         c: "cancel",
       };

@@ -1,10 +1,11 @@
 import { helpText, parseArgs } from "./args.ts";
 import { runCommitFlow } from "./commands/commit.ts";
+import { runPrFlow } from "./commands/pr.ts";
 import { loadConfig } from "./config.ts";
 import { UserError } from "./errors.ts";
 import { gitClient as defaultGitClient } from "./git.ts";
 import { runGitignoreFlow } from "./gitignore.ts";
-import { generateCommitMessage } from "./openrouter.ts";
+import { generateCommitMessage, generatePullRequestDraft } from "./openrouter.ts";
 import { createConsoleOutput, createConsolePrompt, emitSuccess } from "./output.ts";
 import { renderCommandHeader, renderStatus } from "./render.ts";
 import type { CliContext, CommandDependencies, ReasoningMode } from "./types.ts";
@@ -21,6 +22,7 @@ export async function runCli(
     fetchImpl: dependencies.fetchImpl ?? fetch,
     git: dependencies.gitClient ?? defaultGitClient,
     generateCommitMessage: dependencies.generateCommitMessage ?? generateCommitMessage,
+    generatePullRequestDraft: dependencies.generatePullRequestDraft ?? generatePullRequestDraft,
   };
 
   try {
@@ -71,16 +73,14 @@ export async function runCli(
         return 0;
       }
       case "pr": {
-        const base = getOptionalStringFlag(parsed.flags.base) ?? config.defaultBaseBranch;
-        const title = getOptionalStringFlag(parsed.flags.title);
-        const body = getOptionalStringFlag(parsed.flags.body);
-        renderCommandHeader(ctx.output, "AutoGit PR", [
-          { label: "Branch", value: ctx.git.getCurrentBranch(ctx.cwd) },
-          { label: "Base", value: base ?? "(gh default)" },
-          { label: "Title", value: title ?? "(gh prompt)" },
-        ]);
-        ctx.git.createPullRequest(ctx.cwd, { base, title, body });
-        emitSuccess(ctx.output, "Pull request created via gh.");
+        const model = getStringFlag(parsed.flags.model, config.model);
+        await runPrFlow(ctx, {
+          config,
+          model,
+          reasoningMode: resolveReasoningMode(config.reasoningMode, parsed.flags),
+          autoConfirm: Boolean(parsed.flags.yes),
+          baseBranch: getOptionalStringFlag(parsed.flags.base),
+        });
         return 0;
       }
       case "publish": {
