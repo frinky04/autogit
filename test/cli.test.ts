@@ -115,6 +115,7 @@ test("runCli commit creates a commit from staged changes", async () => {
         promptTokens: 120,
         completionTokens: 8,
         totalTokens: 128,
+        costCredits: 0.00012999,
       });
       return "feat: add hello file";
     },
@@ -131,6 +132,7 @@ test("runCli commit creates a commit from staged changes", async () => {
   assert.ok(messages.some((message) => message.includes("Suggested commit message")));
   assert.ok(messages.some((message) => message.includes("Token usage")));
   assert.ok(messages.some((message) => message.includes("Total: 128")));
+  assert.ok(messages.some((message) => message.includes("Estimated cost: 0.00012999 credits")));
   assert.ok(messages.some((message) => message.includes("Committed changes.")));
 });
 
@@ -546,6 +548,7 @@ test("runCli pr generates a draft, pushes, and creates the PR", async () => {
         promptTokens: 90,
         completionTokens: 30,
         totalTokens: 120,
+        costCredits: 0.00042,
       });
       return {
         title: "feat: improve PR automation flow",
@@ -564,6 +567,7 @@ test("runCli pr generates a draft, pushes, and creates the PR", async () => {
   }]);
   assert.ok(messages.some((message) => message.includes("Token usage")));
   assert.ok(messages.some((message) => message.includes("Total: 120")));
+  assert.ok(messages.some((message) => message.includes("Estimated cost: 0.00042 credits")));
 });
 
 test("runCli pr supports regeneration with feedback", async () => {

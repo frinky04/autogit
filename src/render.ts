@@ -73,13 +73,26 @@ export function renderTokenUsage(output: OutputWriter, usage: TokenUsage | undef
     return;
   }
 
+  const lines = [
+    `Prompt: ${usage.promptTokens}`,
+    `Completion: ${usage.completionTokens}`,
+    `Total: ${usage.totalTokens}`,
+  ];
+  if (usage.costCredits !== undefined) {
+    lines.push(`Estimated cost: ${formatCostCredits(usage.costCredits)} credits`);
+  }
+
   output.box(
     "Token usage",
-    [
-      `Prompt: ${usage.promptTokens}`,
-      `Completion: ${usage.completionTokens}`,
-      `Total: ${usage.totalTokens}`,
-    ].join("\n"),
+    lines.join("\n"),
   );
   output.info("");
+}
+
+function formatCostCredits(value: number): string {
+  if (!Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return value.toFixed(8).replace(/\.?0+$/, "");
 }

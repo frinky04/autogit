@@ -138,6 +138,7 @@ async function parseJsonResponseText(
       prompt_tokens?: number;
       completion_tokens?: number;
       total_tokens?: number;
+      cost?: number | string;
     };
     choices?: Array<{
       message?: {
@@ -416,6 +417,7 @@ function parseSseEvent(rawEvent: string): { token: string; usage?: TokenUsage } 
       prompt_tokens?: number;
       completion_tokens?: number;
       total_tokens?: number;
+      cost?: number | string;
     };
     choices?: Array<{
       delta?: {
@@ -537,6 +539,7 @@ function normalizeTokenUsage(
       prompt_tokens?: number;
       completion_tokens?: number;
       total_tokens?: number;
+      cost?: number | string;
     }
     | undefined,
 ): TokenUsage | undefined {
@@ -547,6 +550,7 @@ function normalizeTokenUsage(
   const promptTokens = Number(value.prompt_tokens);
   const completionTokens = Number(value.completion_tokens);
   const totalTokens = Number(value.total_tokens);
+  const parsedCost = value.cost === undefined ? undefined : Number(value.cost);
 
   if (
     !Number.isFinite(promptTokens) ||
@@ -560,5 +564,9 @@ function normalizeTokenUsage(
     promptTokens,
     completionTokens,
     totalTokens,
+    costCredits:
+      parsedCost !== undefined && Number.isFinite(parsedCost) && parsedCost >= 0
+        ? parsedCost
+        : undefined,
   };
 }

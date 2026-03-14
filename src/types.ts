@@ -25,6 +25,7 @@ export type TokenUsage = {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  costCredits?: number;
 };
 
 export type ConfirmOptions = {

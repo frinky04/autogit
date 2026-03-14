@@ -27,6 +27,7 @@ test("generateCommitMessage omits reasoning in auto mode", async () => {
           prompt_tokens: 10,
           completion_tokens: 4,
           total_tokens: 14,
+          cost: 0.000052,
         },
       }),
       {
@@ -66,6 +67,7 @@ test("generateCommitMessage omits reasoning in auto mode", async () => {
     promptTokens: 10,
     completionTokens: 4,
     totalTokens: 14,
+    costCredits: 0.000052,
   });
 });
 
@@ -161,7 +163,7 @@ test("generateCommitMessage streams token chunks from SSE", async () => {
             ": OPENROUTER PROCESSING\n\n",
             'data: {"choices":[{"delta":{"content":"feat: "}}]}\n\n',
             'data: {"choices":[{"delta":{"content":"add streaming"}}]}\n\n',
-            'data: {"usage":{"prompt_tokens":42,"completion_tokens":5,"total_tokens":47}}\n\n',
+            'data: {"usage":{"prompt_tokens":42,"completion_tokens":5,"total_tokens":47,"cost":"0.000071"}}\n\n',
             "data: [DONE]\n\n",
           ].join(""),
         ),
@@ -208,6 +210,7 @@ test("generateCommitMessage streams token chunks from SSE", async () => {
     promptTokens: 42,
     completionTokens: 5,
     totalTokens: 47,
+    costCredits: 0.000071,
   });
 });
 
@@ -262,6 +265,7 @@ test("generatePullRequestDraft parses JSON title and body", async () => {
           prompt_tokens: 55,
           completion_tokens: 21,
           total_tokens: 76,
+          cost: 0.000411,
         },
       }),
       {
@@ -304,6 +308,7 @@ test("generatePullRequestDraft parses JSON title and body", async () => {
     promptTokens: 55,
     completionTokens: 21,
     totalTokens: 76,
+    costCredits: 0.000411,
   });
 });
 
