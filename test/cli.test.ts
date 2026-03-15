@@ -372,6 +372,52 @@ test("runCli commit --all stages unstaged changes when staged changes already ex
   assert.deepEqual(commits, ["feat: stage all changes"]);
 });
 
+test("runCli commit --yes skips unstaged staging prompt when staged changes exist", async () => {
+  const commits: string[] = [];
+  let confirmCalls = 0;
+  const stagedDiff = "diff --git a/staged.txt b/staged.txt";
+
+  const exitCode = await runCli(["commit", "--yes"], {
+    cwd: "/repo",
+    env: {
+      ...process.env,
+      OPENROUTER_API_KEY: "test-key",
+    },
+    output: makeOutput(),
+    prompt: {
+      async confirm() {
+        confirmCalls += 1;
+        return true;
+      },
+    },
+    gitClient: makeGitClient({
+      getStatusSummary() {
+        return makeStatusSummary({
+          stagedCount: 1,
+          unstagedCount: 2,
+          untrackedCount: 1,
+          clean: false,
+        });
+      },
+      getStagedDiff() {
+        return stagedDiff;
+      },
+      stageAllChanges() {
+        throw new Error("stageAllChanges should not be called when --yes is used without --all");
+      },
+      commitWithMessage(_, message) { commits.push(message); },
+    }),
+    async generateCommitMessage(_, request) {
+      assert.equal(request.diff, stagedDiff);
+      return "feat: commit staged only";
+    },
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(confirmCalls, 0);
+  assert.deepEqual(commits, ["feat: commit staged only"]);
+});
+
 test("runCli commit can commit and push from the action prompt", async () => {
   const commits: string[] = [];
   const pushes: string[] = [];

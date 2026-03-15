@@ -15,7 +15,7 @@ export async function runCommitFlow(
     stageAll: boolean;
   },
 ): Promise<void> {
-  const diff = await prepareCommitDiff(ctx, options.stageAll);
+  const diff = await prepareCommitDiff(ctx, options.stageAll, options.autoConfirm);
 
   const repoRoot = ctx.git.resolveRepoRoot(ctx.cwd);
   const branchName = ctx.git.getCurrentBranch(ctx.cwd);
@@ -104,6 +104,7 @@ export async function runCommitFlow(
 async function prepareCommitDiff(
   ctx: CliContext,
   stageAll: boolean,
+  autoConfirm: boolean,
 ): Promise<string> {
   let diff = ctx.git.getStagedDiff(ctx.cwd);
   const hasStagedDiff = diff.trim().length > 0;
@@ -124,6 +125,10 @@ async function prepareCommitDiff(
   }
 
   if (!hasStagedDiff) {
+    if (autoConfirm) {
+      throw new UserError("No staged changes found. Stage files manually or rerun with --all.");
+    }
+
     const shouldStageAll = await ctx.prompt.confirm(
       "No staged changes found. Stage all tracked and untracked changes?",
     );
@@ -134,7 +139,7 @@ async function prepareCommitDiff(
     return stageAllChangesOrThrow(ctx);
   }
 
-  if (hasUnstagedChanges) {
+  if (hasUnstagedChanges && !autoConfirm) {
     const shouldStageAll = await ctx.prompt.confirm(
       "Unstaged or untracked changes found. Stage all tracked and untracked changes?",
     );
