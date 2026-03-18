@@ -7,7 +7,7 @@ import type { AppConfig, ReasoningMode } from "./types.ts";
 
 type PartialConfig = Partial<AppConfig>;
 
-const DEFAULT_MODEL = "qwen/qwen3-235b-a22b-2507:nitro";
+const DEFAULT_MODEL = "openai/gpt-5.4-nano:nitro";
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_SYSTEM_PROMPT =
   "You write concise, high-signal git commit messages in Conventional Commit style when appropriate. Return only the commit message, with an optional body separated by a blank line. No code fences, no commentary.";
