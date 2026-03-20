@@ -154,6 +154,7 @@ export function createConsolePrompt(): PromptHandler {
 
       const actionMap: Record<string, PrAction> = {
         "": "create",
+        r: "regenerate",
         c: "cancel",
       };
 

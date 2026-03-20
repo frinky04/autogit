@@ -65,38 +65,63 @@ export async function runPrFlow(
   }
 
   const commitLog = ctx.git.getCommitLog(ctx.cwd, baseBranch);
-  ctx.output.startSpinner("Generating PR draft");
-  let tokenUsage: TokenUsage | undefined;
+  let regenerateFeedback: string | undefined;
 
-  const request: PullRequestDraftRequest = {
-    model: options.model,
-    systemPrompt: DEFAULT_PR_SYSTEM_PROMPT,
-    diff,
-    repoRoot,
-    branchName,
-    baseBranch,
-    commitLog,
-    reasoningMode: options.reasoningMode,
-  };
+  while (true) {
+    ctx.output.startSpinner("Generating PR draft");
+    let tokenUsage: TokenUsage | undefined;
 
-  const draft = await generatePullRequestDraftWithFallback(
-    config,
-    request,
-    ctx.fetchImpl,
-    ctx.generatePullRequestDraft,
-    ctx.output,
-    {
-      onUsage(usage) {
-        tokenUsage = usage;
+    const request: PullRequestDraftRequest = {
+      model: options.model,
+      systemPrompt: DEFAULT_PR_SYSTEM_PROMPT,
+      diff,
+      repoRoot,
+      branchName,
+      baseBranch,
+      commitLog,
+      reasoningMode: options.reasoningMode,
+      regenerateFeedback,
+    };
+
+    const draft = await generatePullRequestDraftWithFallback(
+      config,
+      request,
+      ctx.fetchImpl,
+      ctx.generatePullRequestDraft,
+      ctx.output,
+      {
+        onUsage(usage) {
+          tokenUsage = usage;
+        },
       },
-    },
-  );
+    );
 
-  ctx.output.stopSpinner();
-  renderPullRequestDraft(ctx.output, draft);
-  renderTokenUsage(ctx.output, tokenUsage);
+    ctx.output.stopSpinner();
+    renderPullRequestDraft(ctx.output, draft);
+    renderTokenUsage(ctx.output, tokenUsage);
 
-  if (options.autoConfirm) {
+    if (options.autoConfirm) {
+      ctx.git.createPullRequest(ctx.cwd, {
+        base: baseBranch,
+        title: draft.title,
+        body: draft.body,
+      });
+      emitSuccess(ctx.output, "Pull request created via gh.");
+      return;
+    }
+
+    renderPrActions(ctx.output);
+    const action = await choosePrAction(ctx);
+
+    if (action === "regenerate") {
+      regenerateFeedback = await requestRegenerateFeedback(ctx);
+      continue;
+    }
+
+    if (action === "cancel") {
+      throw new UserError("Pull request creation aborted.");
+    }
+
     ctx.git.createPullRequest(ctx.cwd, {
       base: baseBranch,
       title: draft.title,
@@ -105,20 +130,6 @@ export async function runPrFlow(
     emitSuccess(ctx.output, "Pull request created via gh.");
     return;
   }
-
-  renderPrActions(ctx.output);
-  const action = await choosePrAction(ctx);
-
-  if (action === "cancel") {
-    throw new UserError("Pull request creation aborted.");
-  }
-
-  ctx.git.createPullRequest(ctx.cwd, {
-    base: baseBranch,
-    title: draft.title,
-    body: draft.body,
-  });
-  emitSuccess(ctx.output, "Pull request created via gh.");
 }
 
 function resolveBaseBranch(ctx: CliContext, configuredBase?: string): string {
@@ -137,4 +148,12 @@ async function choosePrAction(ctx: CliContext): Promise<PrAction> {
   }
   const confirmed = await ctx.prompt.confirm("Create pull request with this draft?");
   return confirmed ? "create" : "cancel";
+}
+
+async function requestRegenerateFeedback(ctx: CliContext): Promise<string | undefined> {
+  if (!ctx.prompt.input) {
+    return undefined;
+  }
+  const value = (await ctx.prompt.input("Feedback for regeneration (optional): ")).trim();
+  return value || undefined;
 }

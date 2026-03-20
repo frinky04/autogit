@@ -71,7 +71,7 @@ Usage:
 
 The commit and pr commands are interactive AI flows. Commit can
 commit/push/switch/edit/regenerate. PR can push, generate title/body,
-then create via gh (single draft per run).
+regenerate with feedback, and create via gh.
 
 Config:
   OPENROUTER_API_KEY            Required unless apiKey is set in config
