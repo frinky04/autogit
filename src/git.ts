@@ -198,6 +198,10 @@ export function createPullRequest(
     args.push("--body", options.body);
   }
 
+  if (!options.title && !options.body) {
+    args.push("--fill");
+  }
+
   runCommand("gh", args, cwd);
 }
 
