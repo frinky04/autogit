@@ -49,27 +49,31 @@ export function getStatusSummary(cwd: string): GitStatusSummary {
       continue;
     }
 
-    if (line.startsWith("# branch.head ")) {
-      summary.branchName = line.slice("# branch.head ".length);
-      continue;
-    }
-
-    if (line.startsWith("# branch.upstream ")) {
-      summary.upstream = line.slice("# branch.upstream ".length);
-      continue;
-    }
-
-    if (line.startsWith("# branch.ab ")) {
-      const match = /# branch\.ab \+(\d+) \-(\d+)/.exec(line);
-      if (match) {
-        summary.ahead = Number(match[1]);
-        summary.behind = Number(match[2]);
+    if (line.startsWith("# ")) {
+      if (line.startsWith("# branch.head ")) {
+        summary.branchName = line.slice("# branch.head ".length);
+      } else if (line.startsWith("# branch.upstream ")) {
+        summary.upstream = line.slice("# branch.upstream ".length);
+      } else if (line.startsWith("# branch.ab ")) {
+        const match = /# branch\.ab \+(\d+) \-(\d+)/.exec(line);
+        if (match) {
+          summary.ahead = Number(match[1]);
+          summary.behind = Number(match[2]);
+        }
       }
       continue;
     }
 
     if (line.startsWith("? ")) {
       summary.untrackedCount += 1;
+      continue;
+    }
+
+    if (line.startsWith("! ")) {
+      continue;
+    }
+
+    if (!(line.startsWith("1 ") || line.startsWith("2 ") || line.startsWith("u "))) {
       continue;
     }
 
