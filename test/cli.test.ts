@@ -524,7 +524,8 @@ test("runCli status renders repository status without config", async () => {
 test("runCli commit offers PR after push on a feature branch", async () => {
   const commits: string[] = [];
   const pushes: string[] = [];
-  const prs: Array<{ base?: string }> = [];
+  const prs: Array<{ base?: string; title?: string; body?: string }> = [];
+  const prDraftRequests: string[] = [];
   const prPromptDefaults: boolean[] = [];
   const { messages, output } = makeMessageOutput();
 
@@ -552,6 +553,7 @@ test("runCli commit offers PR after push on a feature branch", async () => {
     },
     gitClient: makeGitClient({
       getCurrentBranch() { return "feature/my-feature"; },
+      getStatusSummary() { return makeStatusSummary({ clean: true, stagedCount: 0 }); },
       commitWithMessage(_, message) { commits.push(message); },
       pushCurrentBranch() { pushes.push("feature/my-feature"); return "feature/my-feature"; },
       createPullRequest(_, options) { prs.push(options); },
@@ -559,12 +561,24 @@ test("runCli commit offers PR after push on a feature branch", async () => {
     async generateCommitMessage() {
       return "feat: new feature";
     },
+    async generatePullRequestDraft(_, request) {
+      prDraftRequests.push(request.baseBranch);
+      return {
+        title: "feat: generated pr title",
+        body: "## Summary\n- generated from commit flow",
+      };
+    },
   });
 
   assert.equal(exitCode, 0);
   assert.deepEqual(commits, ["feat: new feature"]);
   assert.deepEqual(pushes, ["feature/my-feature"]);
-  assert.deepEqual(prs, [{ base: undefined }]);
+  assert.deepEqual(prDraftRequests, ["main"]);
+  assert.deepEqual(prs, [{
+    base: "main",
+    title: "feat: generated pr title",
+    body: "## Summary\n- generated from commit flow",
+  }]);
   assert.deepEqual(prPromptDefaults, [false]);
   assert.ok(messages.some((message) => message.includes("Pull request created via gh.")));
 });
@@ -604,6 +618,61 @@ test("runCli commit skips PR prompt when pushing on main", async () => {
   assert.equal(exitCode, 0);
   assert.ok(!prompts.some((message) => message.includes("pull request")));
   assert.deepEqual(prs, []);
+});
+
+test("runCli commit allows cancelling PR draft flow without failing commit", async () => {
+  const commits: string[] = [];
+  const pushes: string[] = [];
+  const prs: Array<{ base?: string; title?: string; body?: string }> = [];
+  const { messages, output } = makeMessageOutput();
+
+  const exitCode = await runCli(["commit"], {
+    cwd: "/repo",
+    env: {
+      ...process.env,
+      OPENROUTER_API_KEY: "test-key",
+    },
+    output,
+    prompt: {
+      async confirm(message: string) {
+        if (message.includes("Create a pull request?")) {
+          return true;
+        }
+        if (message.includes("Create pull request with this draft?")) {
+          return false;
+        }
+        return true;
+      },
+      async chooseCommitAction() {
+        return "push";
+      },
+      async editMessage(message) {
+        return message;
+      },
+    },
+    gitClient: makeGitClient({
+      getCurrentBranch() { return "feature/cancel-pr"; },
+      getStatusSummary() { return makeStatusSummary({ clean: true, stagedCount: 0 }); },
+      commitWithMessage(_, message) { commits.push(message); },
+      pushCurrentBranch() { pushes.push("feature/cancel-pr"); return "feature/cancel-pr"; },
+      createPullRequest(_, options) { prs.push(options); },
+    }),
+    async generateCommitMessage() {
+      return "feat: push without creating pr";
+    },
+    async generatePullRequestDraft() {
+      return {
+        title: "feat: generated pr title",
+        body: "## Summary\n- generated from commit flow",
+      };
+    },
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(commits, ["feat: push without creating pr"]);
+  assert.deepEqual(pushes, ["feature/cancel-pr"]);
+  assert.deepEqual(prs, []);
+  assert.ok(!messages.some((message) => message.includes("Error: Pull request creation aborted.")));
 });
 
 test("runCli commit can commit on a new branch from the action prompt", async () => {

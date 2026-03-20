@@ -27,7 +27,7 @@ The main command. Generates an AI commit message from your staged diff and walks
    - **e** — edit the message
    - **r** — regenerate (with optional feedback like "shorter" or "more conventional")
    - **c** — cancel
-5. If you push from a feature branch, offers to create a pull request via `gh`.
+5. If you push from a feature branch, offers to start the interactive PR draft flow (`autogit pr`) so you can create, regenerate, or cancel.
 
 Use `--yes` to skip all prompts and commit immediately. Use `--model` to override the configured model for a single run.
 
