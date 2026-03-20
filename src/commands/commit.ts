@@ -1,5 +1,6 @@
 import { requireApiKey } from "../config.ts";
 import { UserError } from "../errors.ts";
+import { runPrFlow } from "./pr.ts";
 import { generateCommitMessageWithFallback } from "../openrouter.ts";
 import { emitSuccess } from "../output.ts";
 import { renderCommandHeader, renderCommitActions, renderCommitMessage, renderTokenUsage } from "../render.ts";
@@ -94,7 +95,11 @@ export async function runCommitFlow(
     const pushed = applyCommitAction(result.action, ctx, result.message);
 
     if (pushed) {
-      await offerPullRequest(ctx, options.config);
+      await offerPullRequest(ctx, {
+        config: options.config,
+        model: options.model,
+        reasoningMode: options.reasoningMode,
+      });
     }
 
     return;
@@ -267,10 +272,17 @@ function isFeatureBranch(branchName: string, baseBranch?: string): boolean {
   return branchName !== "main" && branchName !== "master";
 }
 
-async function offerPullRequest(ctx: CliContext, config: AppConfig): Promise<void> {
+async function offerPullRequest(
+  ctx: CliContext,
+  options: {
+    config: AppConfig;
+    model: string;
+    reasoningMode: ReasoningMode;
+  },
+): Promise<void> {
   const currentBranch = ctx.git.getCurrentBranch(ctx.cwd);
 
-  if (!isFeatureBranch(currentBranch, config.defaultBaseBranch)) {
+  if (!isFeatureBranch(currentBranch, options.config.defaultBaseBranch)) {
     return;
   }
 
@@ -279,11 +291,20 @@ async function offerPullRequest(ctx: CliContext, config: AppConfig): Promise<voi
     return;
   }
 
-  renderCommandHeader(ctx.output, "AutoGit PR", [
-    { label: "Branch", value: currentBranch },
-    { label: "Base", value: config.defaultBaseBranch ?? "(gh default)" },
-  ]);
+  try {
+    await runPrFlow(ctx, {
+      config: options.config,
+      model: options.model,
+      reasoningMode: options.reasoningMode,
+      autoConfirm: false,
+      baseBranch: options.config.defaultBaseBranch,
+      skipPush: true,
+    });
+  } catch (error) {
+    if (error instanceof UserError && error.message === "Pull request creation aborted.") {
+      return;
+    }
 
-  ctx.git.createPullRequest(ctx.cwd, { base: config.defaultBaseBranch });
-  emitSuccess(ctx.output, "Pull request created via gh.");
+    throw error;
+  }
 }

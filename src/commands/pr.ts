@@ -16,6 +16,7 @@ export async function runPrFlow(
     reasoningMode: ReasoningMode;
     autoConfirm: boolean;
     baseBranch?: string;
+    skipPush?: boolean;
   },
 ): Promise<void> {
   const config = requireApiKey(options.config);
@@ -54,10 +55,12 @@ export async function runPrFlow(
     ctx.output.info("");
   }
 
-  ctx.output.info("Pushing current branch.");
-  const pushedBranch = ctx.git.pushCurrentBranch(ctx.cwd);
-  emitSuccess(ctx.output, `Pushed branch: ${pushedBranch}`);
-  ctx.output.info("");
+  if (!options.skipPush) {
+    ctx.output.info("Pushing current branch.");
+    const pushedBranch = ctx.git.pushCurrentBranch(ctx.cwd);
+    emitSuccess(ctx.output, `Pushed branch: ${pushedBranch}`);
+    ctx.output.info("");
+  }
 
   const diff = ctx.git.getBranchDiff(ctx.cwd, baseBranch);
   if (!diff.trim()) {
