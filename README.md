@@ -42,8 +42,8 @@ Generates a pull request draft with OpenRouter, then creates it via `gh pr creat
 1. Verifies branch/base setup (uses `--base`, config default base, or detected remote default branch).
 2. Warns if uncommitted changes exist (they are not included in PR generation).
 3. Pushes the current branch.
-4. Diffs `base...HEAD` and asks OpenRouter for PR title + description.
-5. Lets you create immediately, regenerate with feedback, or cancel.
+4. Diffs `base...HEAD` and asks OpenRouter once for PR title + description.
+5. Lets you create immediately or cancel.
 
 Use `--yes` to skip prompts and create the PR from the first draft.
 

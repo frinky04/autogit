@@ -63,7 +63,6 @@ export function renderPullRequestDraft(output: OutputWriter, draft: PullRequestD
 export function renderPrActions(output: OutputWriter): void {
   output.actionLine([
     { key: "Enter", label: "Create PR" },
-    { key: "r", label: "Regenerate" },
     { key: "c", label: "Cancel" },
   ]);
 }

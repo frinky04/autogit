@@ -725,9 +725,8 @@ test("runCli pr generates a draft, pushes, and creates the PR", async () => {
   assert.ok(messages.some((message) => message.includes("Estimated cost: $0.00042")));
 });
 
-test("runCli pr supports regeneration with feedback", async () => {
-  const actionQueue: Array<"regenerate" | "create"> = ["regenerate", "create"];
-  const feedbackValues: string[] = [];
+test("runCli pr generates only one draft per run", async () => {
+  let generationCount = 0;
   const prs: Array<{ title?: string; body?: string }> = [];
 
   const exitCode = await runCli(["pr"], {
@@ -742,38 +741,28 @@ test("runCli pr supports regeneration with feedback", async () => {
         return true;
       },
       async choosePrAction() {
-        return actionQueue.shift() ?? "create";
-      },
-      async input() {
-        return "focus more on test coverage";
+        return "create";
       },
     },
     gitClient: makeGitClient({
-      getCurrentBranch() { return "feature/regenerate-pr"; },
+      getCurrentBranch() { return "feature/single-draft-pr"; },
       createPullRequest(_, options) { prs.push(options); },
     }),
-    async generatePullRequestDraft(_, request) {
-      feedbackValues.push(request.regenerateFeedback ?? "");
-      if (feedbackValues.length === 1) {
-        return {
-          title: "feat: first draft title",
-          body: "## Summary\n- initial draft",
-        };
-      }
-
+    async generatePullRequestDraft() {
+      generationCount += 1;
       return {
-        title: "feat: improved draft title",
-        body: "## Summary\n- improved draft\n\n## Testing\n- npm test",
+        title: "feat: single draft title",
+        body: "## Summary\n- single draft body\n\n## Testing\n- npm test",
       };
     },
   });
 
   assert.equal(exitCode, 0);
-  assert.deepEqual(feedbackValues, ["", "focus more on test coverage"]);
+  assert.equal(generationCount, 1);
   assert.deepEqual(prs, [{
     base: "main",
-    title: "feat: improved draft title",
-    body: "## Summary\n- improved draft\n\n## Testing\n- npm test",
+    title: "feat: single draft title",
+    body: "## Summary\n- single draft body\n\n## Testing\n- npm test",
   }]);
 });
 

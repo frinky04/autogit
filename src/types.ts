@@ -14,7 +14,7 @@ export type OutputWriter = {
 };
 
 export type CommitAction = "commit" | "push" | "branch" | "edit" | "regenerate" | "cancel";
-export type PrAction = "create" | "regenerate" | "cancel";
+export type PrAction = "create" | "cancel";
 
 export type PullRequestDraft = {
   title: string;
